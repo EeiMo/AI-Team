@@ -57,6 +57,7 @@ export class BallotService {
     const trx = await knex.transaction();
     let selectedOptions: string[] = [];
     let submittedAt: string;
+    let voteMode: string = 'public'; // EVO-014：提升到 try 外供日志脱敏
 
     try {
       // 2.1 锁定 vote 行 + 校验状态（BUG-012 修复：增加 deadline 字段和校验）
@@ -75,6 +76,9 @@ export class BallotService {
         await trx.rollback();
         throw new AppError(40301, '投票已结束，无法提交');
       }
+
+      // EVO-014：记录 vote_mode 供后续日志脱敏
+      voteMode = vote.vote_mode;
 
       // 2.2 校验 option_ids 归属
       const validOptions: OptionRow[] = await trx('options')
@@ -155,7 +159,7 @@ export class BallotService {
     }
 
     // EVO-014: 匿名投票 userId SHA256 脱敏，防止日志泄露
-    const safeUserId = vote.vote_mode === 'anonymous'
+    const safeUserId = voteMode === 'anonymous'
       ? createHash('sha256').update(userId).digest('hex').slice(0, 12)
       : userId;
     console.info('[BallotService] 提交投票成功', { voteId, userId: safeUserId, selectedOptions });
