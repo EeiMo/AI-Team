@@ -7,6 +7,7 @@
  *      - WS 广播 vote:{id}:update（排除发送者）
  */
 
+import { createHash } from 'crypto';
 import Redis from 'ioredis';
 import { Server as SocketIOServer } from 'socket.io';
 import { knex } from '../db/knex';
@@ -59,8 +60,8 @@ export class BallotService {
 
     try {
       // 2.1 锁定 vote 行 + 校验状态（BUG-012 修复：增加 deadline 字段和校验）
-      const vote: Pick<VoteRow, 'id' | 'status' | 'vote_type' | 'deadline'> | undefined = await trx('votes')
-        .select('id', 'status', 'vote_type', 'deadline')
+      const vote: Pick<VoteRow, 'id' | 'status' | 'vote_type' | 'deadline' | 'vote_mode'> | undefined = await trx('votes')
+        .select('id', 'status', 'vote_type', 'deadline', 'vote_mode')
         .where({ id: voteId })
         .forUpdate()
         .first();
@@ -153,7 +154,11 @@ export class BallotService {
       await this.cacheIdempotentResult(userId, body.idempotency_key, result);
     }
 
-    console.info('[BallotService] 提交投票成功', { voteId, userId, selectedOptions });
+    // EVO-014: 匿名投票 userId SHA256 脱敏，防止日志泄露
+    const safeUserId = vote.vote_mode === 'anonymous'
+      ? createHash('sha256').update(userId).digest('hex').slice(0, 12)
+      : userId;
+    console.info('[BallotService] 提交投票成功', { voteId, userId: safeUserId, selectedOptions });
 
     return result;
 
