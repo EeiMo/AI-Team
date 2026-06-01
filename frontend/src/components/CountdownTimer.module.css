@@ -1,0 +1,47 @@
+/* CountdownTimer.module.css — 倒计时样式 */
+
+.timer {
+  display: inline-block;
+  padding: 2px 10px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #666;
+  background: #f2f3f5;
+  border-radius: 4px;
+  transition: color 0.3s, background 0.3s;
+}
+
+/* ≤60s 红色脉冲 */
+.warning {
+  color: #ff3b30;
+  background: #fff0ef;
+  animation: pulse-warning 1.5s infinite;
+}
+
+/* ≤10s 大号红色闪烁 */
+.critical {
+  font-size: 16px;
+  font-weight: 700;
+  color: #fff;
+  background: #ff3b30;
+  animation: pulse-critical 0.5s infinite;
+}
+
+.expired {
+  display: inline-block;
+  padding: 2px 10px;
+  font-size: 13px;
+  color: #999;
+  background: #e5e6eb;
+  border-radius: 4px;
+}
+
+@keyframes pulse-warning {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+@keyframes pulse-critical {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.7; transform: scale(1.05); }
+}

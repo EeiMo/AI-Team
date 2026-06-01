@@ -1,0 +1,38 @@
+/* App.module.css — 全局样式 */
+
+.app {
+  min-height: 100vh;
+  background: #f5f6f7;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
+    'Hiragino Sans GB', 'Microsoft YaHei', 'Helvetica Neue', Helvetica, Arial,
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.notFound {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 60vh;
+  text-align: center;
+  padding: 24px;
+}
+
+.notFound h2 {
+  font-size: 48px;
+  color: #ccc;
+  margin: 0 0 8px;
+}
+
+.notFound p {
+  font-size: 15px;
+  color: #999;
+  margin: 0 0 16px;
+}
+
+.notFound a {
+  font-size: 14px;
+  color: #3370FF;
+  text-decoration: none;
+}

@@ -1,0 +1,188 @@
+/* VoteList.module.css — 投票列表页样式 */
+
+.page {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 16px 16px 40px;
+  min-height: 100vh;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.heading {
+  font-size: 20px;
+  font-weight: 700;
+  color: #1d1d1f;
+  margin: 0;
+}
+
+.createBtn {
+  padding: 8px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #fff;
+  background: #3370FF;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.createBtn:hover {
+  background: #245bdb;
+}
+
+/* Tabs */
+.tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 2px solid #e5e6eb;
+  margin-bottom: 16px;
+}
+
+.tab {
+  flex: 1;
+  padding: 10px 0;
+  font-size: 15px;
+  font-weight: 500;
+  color: #999;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  cursor: pointer;
+  transition: color 0.2s, border-color 0.2s;
+}
+
+.tabActive {
+  color: #3370FF;
+  border-bottom-color: #3370FF;
+}
+
+/* 列表 */
+.list {
+  display: flex;
+  flex-direction: column;
+}
+
+/* 骨架屏 */
+.skeletonList {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.skeletonCard {
+  background: #f7f8fa;
+  border-radius: 12px;
+  padding: 20px 16px;
+}
+
+.skeletonLine1 {
+  width: 60%;
+  height: 16px;
+  background: #e5e6eb;
+  border-radius: 4px;
+  margin-bottom: 10px;
+  animation: shimmer 1.5s infinite;
+}
+
+.skeletonLine2 {
+  width: 40%;
+  height: 12px;
+  background: #e5e6eb;
+  border-radius: 4px;
+  margin-bottom: 10px;
+  animation: shimmer 1.5s infinite;
+  animation-delay: 0.1s;
+}
+
+.skeletonLine3 {
+  width: 80%;
+  height: 6px;
+  background: #e5e6eb;
+  border-radius: 3px;
+  animation: shimmer 1.5s infinite;
+  animation-delay: 0.2s;
+}
+
+@keyframes shimmer {
+  0% { opacity: 0.5; }
+  50% { opacity: 1; }
+  100% { opacity: 0.5; }
+}
+
+/* 空状态 */
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 48px 24px;
+  text-align: center;
+}
+
+.emptyIcon {
+  font-size: 48px;
+  margin-bottom: 12px;
+}
+
+.emptyText {
+  font-size: 15px;
+  color: #999;
+  margin: 0 0 16px;
+}
+
+.emptyCta {
+  padding: 10px 24px;
+  font-size: 14px;
+  color: #fff;
+  background: #3370FF;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+/* 错误 */
+.error {
+  text-align: center;
+  padding: 32px 16px;
+  color: #ff3b30;
+  font-size: 14px;
+}
+
+/* 加载更多 */
+.loadMore {
+  padding: 12px;
+  margin: 12px 0;
+  font-size: 14px;
+  color: #3370FF;
+  background: none;
+  border: 1px solid #e5e6eb;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.loadMore:hover {
+  background: #f2f3f5;
+}
+
+.loadingMore {
+  text-align: center;
+  font-size: 13px;
+  color: #999;
+  padding: 12px;
+  margin: 0;
+}
+
+.allLoaded {
+  text-align: center;
+  font-size: 12px;
+  color: #ccc;
+  padding: 16px;
+  margin: 0;
+}

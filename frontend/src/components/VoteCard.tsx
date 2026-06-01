@@ -1,0 +1,68 @@
+/**
+ * components/VoteCard.tsx
+ * 投票卡片：状态指示点、标题、标签行、进度条
+ * 用于 VoteList 页面的列表渲染
+ */
+import { useNavigate } from 'react-router-dom';
+import type { Vote } from '../types';
+import styles from './VoteCard.module.css';
+
+interface VoteCardProps {
+  vote: Vote;
+}
+
+export default function VoteCard({ vote }: VoteCardProps) {
+  const navigate = useNavigate();
+  const isActive = vote.status === 'active';
+
+  // 格式化截止时间为 mm:ss 格式
+  const getRemaining = (): string => {
+    if (!isActive) return '已结束';
+    const now = Date.now();
+    const deadline = new Date(vote.deadline).getTime();
+    const diff = Math.max(0, Math.floor((deadline - now) / 1000));
+    const m = Math.floor(diff / 60);
+    const s = diff % 60;
+    return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  };
+
+  const typeLabel = vote.vote_type === 'single' ? '单选' : '多选';
+  const modeLabel = vote.vote_mode === 'anonymous' ? '匿名' : '实名';
+  const voteCount = vote.vote_count ?? 0;
+  const progressPercent = vote.total_voters > 0
+    ? Math.min(100, Math.round((voteCount / vote.total_voters) * 100))
+    : 0;
+
+  return (
+    <div
+      className={styles.card}
+      onClick={() => navigate(`/votes/${vote.id}`)}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => { if (e.key === 'Enter') navigate(`/votes/${vote.id}`); }}
+    >
+      <div className={styles.header}>
+        <span className={`${styles.dot} ${isActive ? styles.dotActive : styles.dotClosed}`} />
+        <h3 className={styles.title}>{vote.title}</h3>
+      </div>
+      <div className={styles.tags}>
+        <span className={styles.tag}>{typeLabel}</span>
+        <span className={styles.tag}>{modeLabel}</span>
+        <span className={`${styles.tag} ${isActive ? styles.tagTime : ''}`}>
+          {isActive ? `剩余 ${getRemaining()}` : '已结束'}
+        </span>
+      </div>
+      <div className={styles.progressRow}>
+        <span className={styles.progressText}>
+          已投 {voteCount}/{vote.total_voters} 人
+        </span>
+        <div className={styles.progressBar}>
+          <div
+            className={styles.progressFill}
+            style={{ width: `${progressPercent}%` }}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}

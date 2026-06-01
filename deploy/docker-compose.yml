@@ -1,0 +1,154 @@
+# ============================================================
+# 团队即时投票工具 — Docker Compose 编排
+# 格式：v2.4 | 设计人：长夜 | 日期：2026-06-01
+# ============================================================
+# 一键启动：
+#   PG_PASSWORD=<your_pw> FEISHU_APP_ID=<id> FEISHU_APP_SECRET=<secret> \
+#   TEAM_TOTAL_MEMBERS=24 docker-compose up -d
+#
+# 滚动重启（仅更新 app）：
+#   docker-compose up -d --no-deps --build app
+# ============================================================
+
+version: '2.4'
+
+services:
+
+  # ========================================
+  # Nginx 反向代理 + 静态资源服务
+  # ========================================
+  nginx:
+    build:
+      context: .
+      dockerfile: nginx.Dockerfile
+      args:
+        - NODE_ENV=production
+    image: vote-nginx:latest
+    container_name: vote-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./certs:/etc/nginx/certs:ro
+      # 前端构建产物由 nginx.Dockerfile 多阶段构建注入镜像内
+      # 如需要独立挂载（开发阶段），取消下面注释：
+      # - ./client/dist:/usr/share/nginx/html:ro
+    depends_on:
+      - app
+    restart: unless-stopped
+    networks:
+      - vote-net
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # ========================================
+  # Node.js 应用（Express + Socket.IO）
+  # ========================================
+  app:
+    build:
+      context: .
+      dockerfile: app.Dockerfile
+    image: vote-app:latest
+    container_name: vote-app
+    expose:
+      - "3001"
+    environment:
+      NODE_ENV: production
+      PORT: "3001"
+      DATABASE_URL: postgresql://vote_user:${PG_PASSWORD}@pg:5432/vote_db
+      REDIS_URL: redis://redis:6379/0
+      FEISHU_APP_ID: ${FEISHU_APP_ID}
+      FEISHU_APP_SECRET: ${FEISHU_APP_SECRET}
+      TEAM_TOTAL_MEMBERS: ${TEAM_TOTAL_MEMBERS}
+      REDIS_DEGRADE_THRESHOLD: "3"
+    depends_on:
+      pg:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - vote-net
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "-qO-",
+          "http://localhost:3001/health"
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  # ========================================
+  # PostgreSQL 15
+  # ========================================
+  pg:
+    image: postgres:15-alpine
+    container_name: vote-pg
+    environment:
+      POSTGRES_DB: vote_db
+      POSTGRES_USER: vote_user
+      POSTGRES_PASSWORD: ${PG_PASSWORD}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      # 首次启动自动执行 DDL 迁移脚本
+      - ./server/src/db/migrations:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "127.0.0.1:5432:5432"
+    restart: unless-stopped
+    networks:
+      - vote-net
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U vote_user -d vote_db"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ========================================
+  # Redis 7（缓存 + 速率限制 + 定时器）
+  # ========================================
+  redis:
+    image: redis:7-alpine
+    container_name: vote-redis
+    command: >
+      redis-server
+      --notify-keyspace-events Ex
+      --appendonly yes
+      --maxmemory 256mb
+      --maxmemory-policy volatile-lru
+    volumes:
+      - redis_data:/data
+    ports:
+      - "127.0.0.1:6379:6379"
+    restart: unless-stopped
+    networks:
+      - vote-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+# ========================================
+# 命名卷（持久化数据）
+# ========================================
+volumes:
+  pg_data:
+  redis_data:
+
+# ========================================
+# 桥接网络
+# ========================================
+networks:
+  vote-net:
+    driver: bridge

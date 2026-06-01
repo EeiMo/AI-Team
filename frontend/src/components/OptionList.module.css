@@ -1,0 +1,94 @@
+/* OptionList.module.css — 选项列表样式 */
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  background: #f7f8fa;
+  border: 1.5px solid transparent;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s;
+  outline: none;
+  user-select: none;
+}
+
+.option:hover:not(.disabled) {
+  background: #eef1f7;
+}
+
+.option:focus-visible {
+  border-color: #3370FF;
+}
+
+.selected {
+  background: #e8f0ff;
+  border-color: #3370FF;
+}
+
+.disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+
+.indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: border-color 0.2s;
+}
+
+/* 单选圆圈 */
+.radio {
+  width: 20px;
+  height: 20px;
+  border: 2px solid #c7c7cc;
+  border-radius: 50%;
+}
+
+.selected .radio {
+  border-color: #3370FF;
+}
+
+.radioDot {
+  width: 10px;
+  height: 10px;
+  background: #3370FF;
+  border-radius: 50%;
+}
+
+/* 多选方框 */
+.checkbox {
+  width: 20px;
+  height: 20px;
+  border: 2px solid #c7c7cc;
+  border-radius: 4px;
+  color: transparent;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.selected .checkbox {
+  background: #3370FF;
+  border-color: #3370FF;
+  color: #fff;
+}
+
+.checkMark {
+  line-height: 1;
+}
+
+.content {
+  font-size: 15px;
+  color: #1d1d1f;
+  line-height: 1.4;
+  word-break: break-word;
+}

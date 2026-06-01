@@ -1,0 +1,34 @@
+/* NetworkBanner.module.css — 断线横幅样式 */
+
+.banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: #fff7e6;
+  border-bottom: 1px solid #ffd591;
+  font-size: 13px;
+  color: #d48806;
+  animation: slideDown 0.3s ease;
+}
+
+.icon {
+  font-size: 16px;
+}
+
+@keyframes slideDown {
+  from {
+    transform: translateY(-100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}

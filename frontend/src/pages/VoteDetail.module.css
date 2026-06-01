@@ -1,0 +1,266 @@
+/* VoteDetail.module.css — 投票详情页样式 */
+
+.page {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 16px 16px 40px;
+  min-height: 100vh;
+}
+
+.loading {
+  text-align: center;
+  padding: 48px 0;
+  font-size: 15px;
+  color: #999;
+}
+
+.error {
+  text-align: center;
+  padding: 48px 24px;
+  color: #ff3b30;
+  font-size: 14px;
+}
+
+.error p {
+  margin: 0 0 16px;
+}
+
+/* 顶部 */
+.header {
+  margin-bottom: 20px;
+}
+
+.backBtn {
+  padding: 4px 0;
+  font-size: 15px;
+  color: #3370FF;
+  background: none;
+  border: none;
+  cursor: pointer;
+  margin-bottom: 12px;
+  display: inline-block;
+}
+
+.heading {
+  font-size: 20px;
+  font-weight: 700;
+  color: #1d1d1f;
+  margin: 0 0 10px;
+  line-height: 1.4;
+}
+
+.meta {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.tag {
+  display: inline-block;
+  padding: 2px 8px;
+  font-size: 12px;
+  color: #666;
+  background: #f2f3f5;
+  border-radius: 4px;
+}
+
+.closedTag {
+  display: inline-block;
+  padding: 2px 10px;
+  font-size: 13px;
+  color: #999;
+  background: #e5e6eb;
+  border-radius: 4px;
+}
+
+.progressRow {
+  display: flex;
+  align-items: center;
+}
+
+.progressText {
+  font-size: 13px;
+  color: #666;
+}
+
+/* WS 截止提醒 Toast */
+.reminderToast {
+  padding: 12px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #fff;
+  background: linear-gradient(135deg, #ff9500, #ff6b00);
+  border-radius: 10px;
+  margin-bottom: 12px;
+  cursor: pointer;
+  text-align: center;
+  animation: toastSlideIn 0.3s ease;
+}
+
+@keyframes toastSlideIn {
+  from { transform: translateY(-10px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+/* 隐私声明 */
+.privacyBanner {
+  padding: 10px 14px;
+  font-size: 13px;
+  color: #3370FF;
+  background: #e8f0ff;
+  border-radius: 8px;
+  margin-bottom: 16px;
+  line-height: 1.5;
+}
+
+/* 投票区 */
+.voteSection {
+  margin-bottom: 20px;
+}
+
+.submitVoteBtn {
+  width: 100%;
+  margin-top: 16px;
+  padding: 14px;
+  font-size: 16px;
+  font-weight: 600;
+  color: #fff;
+  background: #3370FF;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.submitVoteBtn:hover:not(.submitVoteDisabled) {
+  background: #245bdb;
+}
+
+.submitVoteDisabled {
+  background: #b4c8f0;
+  cursor: not-allowed;
+}
+
+.submitError {
+  text-align: center;
+  font-size: 13px;
+  color: #ff3b30;
+  margin-top: 10px;
+}
+
+.votedHint {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 16px;
+  padding: 12px;
+  font-size: 14px;
+  color: #34c759;
+  background: #f0fff4;
+  border-radius: 8px;
+}
+
+/* 发起者操作 */
+.creatorActions {
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid #f0f0f0;
+  display: flex;
+  justify-content: center;
+}
+
+.closeBtn {
+  padding: 12px 32px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #ff3b30;
+  background: #fff;
+  border: 1.5px solid #ff3b30;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.closeBtn:hover {
+  background: #fff0ef;
+}
+
+/* 已结束页脚 */
+.closedFooter {
+  text-align: center;
+  font-size: 13px;
+  color: #999;
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid #f0f0f0;
+}
+
+/* 确认弹窗遮罩 */
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: 24px;
+}
+
+.dialog {
+  background: #fff;
+  border-radius: 14px;
+  padding: 24px;
+  max-width: 320px;
+  width: 100%;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  animation: dialogIn 0.2s ease;
+}
+
+@keyframes dialogIn {
+  from { transform: scale(0.95); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+.dialogText {
+  font-size: 15px;
+  color: #1d1d1f;
+  line-height: 1.5;
+  margin: 0 0 20px;
+  text-align: center;
+}
+
+.dialogActions {
+  display: flex;
+  gap: 12px;
+}
+
+.dialogCancel {
+  flex: 1;
+  padding: 10px;
+  font-size: 14px;
+  color: #666;
+  background: #f2f3f5;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.dialogConfirm {
+  flex: 1;
+  padding: 10px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #fff;
+  background: #ff3b30;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.dialogConfirm:hover {
+  background: #d9362e;
+}
