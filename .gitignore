@@ -1,4 +1,4 @@
-# Dependencies
+# Dependencies (keep lockfiles for reproducible builds)
 node_modules/
 
 # Build output
