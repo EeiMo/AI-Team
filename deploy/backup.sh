@@ -129,7 +129,7 @@ do_restore() {
 
     # 1. 停止应用（防止恢复期间写入冲突）
     info "Step 1/3: 停止 app 容器..."
-    docker-compose stop app 2>/dev/null || \
+    docker-compose -f deploy/docker-compose.yml stop app 2>/dev/null || \
         docker stop vote-app 2>/dev/null || \
         warn "app 容器可能未运行，继续..."
 
@@ -147,7 +147,7 @@ do_restore() {
 
     # 3. 重建 Redis 缓存
     info "Step 3/3: 启动 app（TallySync 自动重建 Redis 缓存）..."
-    docker-compose start app 2>/dev/null || \
+    docker-compose -f deploy/docker-compose.yml start app 2>/dev/null || \
         docker start vote-app 2>/dev/null
 
     log "━━━━━━ 恢复完成 ━━━━━━"

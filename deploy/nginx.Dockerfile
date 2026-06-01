@@ -20,13 +20,13 @@ FROM node:20-alpine AS client-builder
 WORKDIR /client
 
 # 安装依赖
-COPY client/package.json client/package-lock.json* ./
+COPY frontend/package.json frontend/package-lock.json* ./
 RUN npm ci --include=dev
 
 # 复制源码并构建
-COPY client/ ./
+COPY frontend/ ./
 RUN npm run build
-# 产出：/client/dist/
+# 产出：/frontend/dist/
 
 # ════════════════════════════════════════════════
 # Stage 2: Nginx 运行时
@@ -37,10 +37,10 @@ FROM nginx:1.25-alpine
 RUN rm -f /etc/nginx/conf.d/default.conf
 
 # 注入自定义 Nginx 配置
-COPY nginx.conf /etc/nginx/nginx.conf
+COPY deploy/nginx.conf /etc/nginx/nginx.conf
 
 # 注入前端构建产物
-COPY --from=client-builder /client/dist /usr/share/nginx/html
+COPY --from=client-builder /frontend/dist /usr/share/nginx/html
 
 # 创建 SSL 证书目录（运行时挂载实际证书）
 RUN mkdir -p /etc/nginx/certs

@@ -85,26 +85,26 @@ step "1/5 Lint — 代码静态检查"
 
 lint_backend() {
     info "后端 TypeScript 检查..."
-    cd server
+    cd ../backend
     if command -v npx &>/dev/null; then
         npx tsc --noEmit || { error "TypeScript 编译检查失败"; return 1; }
         npx eslint src/ --ext .ts || warn "ESLint 警告（非阻塞）"
     else
         warn "npx 不可用，跳过 lint（CI 环境请安装 Node.js）"
     fi
-    cd ..
+    cd - > /dev/null
 }
 
 lint_frontend() {
     info "前端 TypeScript 检查..."
-    cd client
+    cd ../frontend
     if command -v npx &>/dev/null; then
         npx tsc --noEmit || { error "TypeScript 编译检查失败"; return 1; }
         npx eslint src/ --ext .ts,.tsx || warn "ESLint 警告（非阻塞）"
     else
         warn "npx 不可用，跳过 lint"
     fi
-    cd ..
+    cd - > /dev/null
 }
 
 if $LOCAL_MODE; then
@@ -122,13 +122,13 @@ step "2/5 Test — 单元测试"
 
 run_tests() {
     info "后端单元测试..."
-    cd server
+    cd ../backend
     if [ -f "node_modules/.bin/jest" ] || [ -f "node_modules/.bin/vitest" ]; then
         npm test || { error "测试失败，终止流水线"; exit 1; }
     else
         warn "未找到测试运行器，跳过测试"
     fi
-    cd ..
+    cd - > /dev/null
 }
 
 if $LOCAL_MODE; then
@@ -151,7 +151,7 @@ step "3/5 Build — 构建 Docker 镜像"
 
 build_app() {
     info "构建 app 镜像: ${APP_IMAGE}..."
-    docker build -f app.Dockerfile -t "${APP_IMAGE}" . || {
+    docker build -f deploy/app.Dockerfile -t "${APP_IMAGE}" . || {
         error "app 镜像构建失败"
         exit 1
     }
@@ -159,7 +159,7 @@ build_app() {
 
 build_nginx() {
     info "构建 nginx 镜像: ${NGINX_IMAGE}..."
-    docker build -f nginx.Dockerfile -t "${NGINX_IMAGE}" . || {
+    docker build -f deploy/nginx.Dockerfile -t "${NGINX_IMAGE}" . || {
         error "nginx 镜像构建失败"
         exit 1
     }
@@ -213,12 +213,12 @@ deploy() {
 
     # 确保依赖服务健康后再重启 app
     info "滚动重启 app 容器（不中断 pg/redis/nginx）..."
-    docker-compose up -d --no-deps --build app
+    docker-compose -f deploy/docker-compose.yml up -d --no-deps --build app
 
     # 等待 healthcheck 通过
     info "等待 app 健康检查通过..."
     for i in $(seq 1 30); do
-        if docker-compose exec -T app wget -qO- http://localhost:3001/health 2>/dev/null; then
+        if docker-compose -f deploy/docker-compose.yml exec -T app wget -qO- http://localhost:3001/health 2>/dev/null; then
             info "app 健康检查通过 ✓"
             break
         fi
@@ -232,8 +232,8 @@ deploy() {
 
     # Nginx reload（重载配置）
     info "重载 Nginx 配置..."
-    docker-compose exec -T nginx nginx -s reload 2>/dev/null || \
-        docker-compose restart nginx
+    docker-compose -f deploy/docker-compose.yml exec -T nginx nginx -s reload 2>/dev/null || \
+        docker-compose -f deploy/docker-compose.yml restart nginx
 
     info "部署完成 ✓"
     info "验证: curl -k https://localhost/health"
@@ -254,6 +254,6 @@ echo "║  App     : ${APP_IMAGE}"
 echo "║  Nginx   : ${NGINX_IMAGE}"
 echo "║  容器状态:"
 echo "╚═════════════════════════════════════════════════════╝"
-docker-compose ps --format "table {{.Name}}\t{{.State}}\t{{.Status}}"
+docker-compose -f deploy/docker-compose.yml ps --format "table {{.Name}}\t{{.State}}\t{{.Status}}"
 
 info "流水线执行完毕 🎉"

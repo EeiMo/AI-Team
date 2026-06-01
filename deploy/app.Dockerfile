@@ -8,7 +8,7 @@
 #   docker build -f app.Dockerfile -t vote-app:latest .
 #
 # 运行上下文：
-#   需要 server/ 目录存在（含 package.json / tsconfig.json / src/）
+#   需要 backend/ 目录存在（含 package.json / tsconfig.json / src/）
 # ============================================================
 
 # ════════════════════════════════════════════════
@@ -19,12 +19,12 @@ FROM node:20-alpine AS builder
 WORKDIR /build
 
 # 1. 安装依赖（含 devDependencies，TypeScript 编译需要）
-COPY server/package.json server/package-lock.json* ./
+COPY backend/package.json backend/package-lock.json* ./
 RUN npm ci --include=dev
 
 # 2. 复制源码并编译 TypeScript
-COPY server/tsconfig.json ./
-COPY server/src/ ./src/
+COPY backend/tsconfig.json ./
+COPY backend/src/ ./src/
 RUN npm run build
 
 # 3. 仅保留运行时依赖（production）
@@ -59,4 +59,4 @@ HEALTHCHECK --interval=15s --timeout=5s --retries=3 \
     CMD wget -qO- http://localhost:3001/health || exit 1
 
 # 启动命令
-CMD ["node", "dist/index.js"]
+CMD ["node", "dist/app.js"]
