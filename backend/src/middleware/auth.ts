@@ -20,6 +20,16 @@ export async function verifyFeishuToken(token: string): Promise<{
   team_id: string;
   display_name: string;
 }> {
+  // --- 降级模式：dev 令牌（飞书就绪前，或测试用）---
+  if (token.startsWith(DEV_TOKEN_PREFIX)) {
+    const parts = token.slice(DEV_TOKEN_PREFIX.length).split('_');
+    return {
+      user_id: parts[0] || 'ou_dev_user_001',
+      team_id: parts[1] || 'dev_team_001',
+      display_name: parts[2] || '开发用户',
+    };
+  }
+
   // --- 生产模式：调用飞书 Open API ---
   if (config.NODE_ENV === 'production' && config.FEISHU_APP_ID && config.FEISHU_APP_SECRET) {
     const appAccessToken = await getAppAccessToken();
@@ -36,16 +46,6 @@ export async function verifyFeishuToken(token: string): Promise<{
       user_id: user.open_id || user.user_id,
       team_id: user.tenant_key || '',
       display_name: user.name || user.en_name || user.open_id,
-    };
-  }
-
-  // --- 开发模式：dev 令牌格式 dev_userId_teamId_displayName ---
-  if (token.startsWith(DEV_TOKEN_PREFIX)) {
-    const parts = token.slice(DEV_TOKEN_PREFIX.length).split('_');
-    return {
-      user_id: parts[0] || 'ou_dev_user_001',
-      team_id: parts[1] || 'dev_team_001',
-      display_name: parts[2] || '开发用户',
     };
   }
 
