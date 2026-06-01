@@ -5,7 +5,7 @@
 # ============================================================
 #
 # 构建：
-#   docker build -f app.Dockerfile -t vote-app:latest .
+#   从项目根目录: docker build -f deploy/app.Dockerfile -t vote-app:latest .
 #
 # 运行上下文：
 #   需要 backend/ 目录存在（含 package.json / tsconfig.json / src/）
