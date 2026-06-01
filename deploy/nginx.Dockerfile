@@ -47,7 +47,7 @@ RUN mkdir -p /etc/nginx/certs
 
 # 健康检查
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
-    CMD wget -qO- http://localhost/health || exit 1
+    CMD wget --no-check-certificate -qO- https://localhost/health || exit 1
 
 # 暴露端口
 EXPOSE 80 443
