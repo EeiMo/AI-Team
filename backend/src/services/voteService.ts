@@ -454,7 +454,7 @@ export class VoteService {
     const tally: Record<string, number> = {};
     for (const oid of optionIds) tally[oid] = 0;
 
-    const rows: { option_id: string; count: string }[] = await knex.raw(
+    const result = await knex.raw(
       `SELECT o.id as option_id, COUNT(uv.id)::text as count
        FROM options o
        LEFT JOIN user_votes uv ON o.id = ANY(uv.selected_options) AND uv.vote_id = o.vote_id
@@ -462,6 +462,7 @@ export class VoteService {
        GROUP BY o.id`,
       [voteId]
     );
+    const rows: { option_id: string; count: string }[] = result.rows;
     for (const r of rows) {
       tally[r.option_id] = parseInt(r.count, 10) || 0;
     }

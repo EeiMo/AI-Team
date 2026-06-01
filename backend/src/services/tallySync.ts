@@ -14,7 +14,7 @@ import { config } from '../config';
  * 从 PG 聚合指定投票的票数
  */
 export async function aggregateTallyFromPG(voteId: string): Promise<Record<string, number>> {
-  const rows: { option_id: string; count: string }[] = await knex.raw(
+  const result = await knex.raw(
     `SELECT o.id as option_id, COUNT(uv.id)::text as count
      FROM options o
      LEFT JOIN user_votes uv ON o.id = ANY(uv.selected_options) AND uv.vote_id = o.vote_id
@@ -22,6 +22,8 @@ export async function aggregateTallyFromPG(voteId: string): Promise<Record<strin
      GROUP BY o.id`,
     [voteId]
   );
+
+  const rows: { option_id: string; count: string }[] = result.rows;
 
   const tally: Record<string, number> = {};
   for (const r of rows) {
