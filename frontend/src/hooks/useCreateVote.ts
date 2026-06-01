@@ -12,6 +12,7 @@ interface FormState {
   vote_type: VoteType;
   vote_mode: VoteMode;
   deadline_minutes: number;
+  total_voters: number;
 }
 
 const DEADLINE_PRESETS = [5, 15, 30, 60];
@@ -22,6 +23,7 @@ const INITIAL_FORM: FormState = {
   vote_type: 'single',
   vote_mode: 'anonymous',
   deadline_minutes: 30,
+  total_voters: 0,
 };
 
 export function useCreateVote() {
@@ -64,6 +66,7 @@ export function useCreateVote() {
   const setVoteType = useCallback((t: VoteType) => setForm((prev) => ({ ...prev, vote_type: t })), []);
   const setVoteMode = useCallback((m: VoteMode) => setForm((prev) => ({ ...prev, vote_mode: m })), []);
   const setDeadline = useCallback((m: number) => setForm((prev) => ({ ...prev, deadline_minutes: m })), []);
+  const setTotalVoters = useCallback((n: number) => setForm((prev) => ({ ...prev, total_voters: n })), []);
 
   // ---- 表单校验 ----
   const validate = useCallback((): ValidationError[] => {
@@ -119,6 +122,7 @@ export function useCreateVote() {
         vote_type: form.vote_type,
         vote_mode: form.vote_mode,
         deadline_minutes: form.deadline_minutes,
+        total_voters: form.total_voters > 0 ? form.total_voters : undefined,
       };
       const res = await api.post<ApiResponse<CreateVoteResponse>>('/votes', payload);
       return res.data.data!.vote.id;
@@ -156,6 +160,7 @@ export function useCreateVote() {
     setVoteType,
     setVoteMode,
     setDeadline,
+    setTotalVoters,
     submit,
   };
 }

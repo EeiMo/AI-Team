@@ -75,6 +75,8 @@ export interface CreateVoteRequest {
   vote_type: VoteType;
   vote_mode: VoteMode;
   deadline_minutes: number;
+  /** 预期投票总人数，0=不限制（不显示进度条） */
+  total_voters?: number;
 }
 
 // ---- 创建投票响应 ----

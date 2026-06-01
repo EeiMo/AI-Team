@@ -31,6 +31,7 @@ export default function CreateVote() {
     setVoteType,
     setVoteMode,
     setDeadline,
+    setTotalVoters,
     submit,
   } = useCreateVote();
 
@@ -201,6 +202,26 @@ export default function CreateVote() {
             {!deadlinePresets.includes(form.deadline_minutes) && (
               <p className={styles.hint}>当前：{form.deadline_minutes} 分钟</p>
             )}
+          </div>
+
+          {/* 预期投票人数 */}
+          <div className={styles.field}>
+            <label className={styles.label}>预期投票人数</label>
+            <p className={styles.hint} style={{ marginBottom: 8 }}>留空或填 0 表示不限制，不显示进度条</p>
+            <input
+              className={styles.input}
+              type="number"
+              inputMode="numeric"
+              min={0}
+              max={999}
+              step={1}
+              placeholder="例如 24"
+              value={form.total_voters > 0 ? form.total_voters : ''}
+              onChange={(e) => {
+                const n = parseInt(e.target.value, 10);
+                setTotalVoters(Number.isFinite(n) && n >= 0 ? n : 0);
+              }}
+            />
           </div>
         </div>
       </main>

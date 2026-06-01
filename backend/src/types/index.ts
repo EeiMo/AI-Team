@@ -54,6 +54,8 @@ export interface CreateVoteBody {
   vote_type: VoteType;
   vote_mode: VoteMode;
   deadline_minutes: number;
+  /** 预期投票总人数，0=不限制（不显示进度条） */
+  total_voters?: number;
   /** BUG-007 修复：幂等键，同一 user_id + key 重复请求返回缓存结果（TTL 24h） */
   idempotency_key?: string;
 }

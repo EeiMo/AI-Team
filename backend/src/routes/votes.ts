@@ -28,9 +28,9 @@ export function createVoteRouter(
     next();
   }
 
-  // ---- 获取 total_voters（降级为环境变量） ----
-  function getTotalVoters(teamId: string): number {
-    // MVP: 单团队部署，直接使用环境变量
+  // ---- 获取 total_voters（表单优先 → 环境变量） ----
+  function getTotalVoters(body?: { total_voters?: number }): number {
+    if (body?.total_voters && body.total_voters > 0) return body.total_voters;
     return config.TEAM_TOTAL_MEMBERS > 0 ? config.TEAM_TOTAL_MEMBERS : 0;
   }
 
@@ -45,7 +45,7 @@ export function createVoteRouter(
         user_id,
         display_name,
         team_id,
-        getTotalVoters(team_id)
+        getTotalVoters(req.body)
       );
       res.status(201).json({ code: 0, data: result });
     } catch (err) {
