@@ -94,13 +94,12 @@ export class BallotService {
 
       // 2.4 插入防重记录
       submittedAt = new Date().toISOString();
-      // knex 对 UUID[] 列的 JS 数组 → PG 类型转换有 bug，
-      // 改用 raw insert + 显式 ::uuid[] 强转
-      const pgArray = `{${optionIds.join(',')}}`;
+      // knex raw + ?::type 语法在 uuid[] 上存在驱动兼容问题，
+      // 改用 string_to_array 彻底避免类型歧义
       await trx.raw(
         `INSERT INTO user_votes (vote_id, user_id, selected_options, created_at)
-         VALUES (?, ?, ?::uuid[], ?)`,
-        [voteId, userId, pgArray, submittedAt]
+         VALUES (?, ?, string_to_array(?, ',')::uuid[], ?)`,
+        [voteId, userId, optionIds.join(','), submittedAt]
       );
 
       selectedOptions = optionIds;
