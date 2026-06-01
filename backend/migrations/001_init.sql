@@ -8,25 +8,21 @@
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 -- ============================================================
--- UUID v7 生成函数（时间有序，利于 B-tree 索引）
+-- UUID v7 生成函数（RFC 9562 规范，时间有序，利于 B-tree 索引）
 -- ============================================================
 CREATE OR REPLACE FUNCTION uuid_v7() RETURNS uuid AS $$
 DECLARE
-  v_time timestamp with time zone := clock_timestamp();
-  v_secs bigint := floor(extract(epoch from v_time) * 1000);
-  v_usec bigint := extract(microseconds from v_time)::bigint % 1000;
-  v_rand1 bigint := (floor(random() * 65536))::bigint;
-  v_rand2 bigint := (floor(random() * 4294967296))::bigint;
+  ts_ms  bigint := (EXTRACT(EPOCH FROM clock_timestamp()) * 1000)::bigint;
+  rand   bytea := gen_random_bytes(10);
+  result bytea;
 BEGIN
-  RETURN encode(set_byte(
-      set_byte(
-        lpad(to_hex((v_secs * 1000 + v_usec)::bigint), 12, '0')::bytea
-        || lpad(to_hex(v_rand1), 4, '0')::bytea
-        || lpad(to_hex(v_rand2), 8, '0')::bytea,
-        6, (get_byte(decode(lpad(to_hex(v_rand1), 4, '0'), 'hex'), 0) & 15) | 112
-      ),
-      8, (get_byte(decode(lpad(to_hex(v_rand2), 8, '0'), 'hex'), 0) & 63) | 128
-    ), 'hex')::uuid;
+  -- 48-bit Unix 毫秒时间戳（大端序，取 int8send 后 6 字节）
+  result := substring(int8send(ts_ms) FROM 3 FOR 6) || rand;
+  -- 设置版本位 = 7
+  result := set_byte(result, 6, (get_byte(result, 6) & 15) | 112);
+  -- 设置变体位 = 10xxxxxx
+  result := set_byte(result, 8, (get_byte(result, 8) & 63) | 128);
+  RETURN encode(result, 'hex')::uuid;
 END;
 $$ LANGUAGE plpgsql;
 

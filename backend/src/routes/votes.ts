@@ -89,12 +89,6 @@ export function createVoteRouter(
   router.post('/:id/vote', requireUser, async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { user_id } = req.user!;
-      // DEBUG: 打印原始请求体
-      console.info('[VoteRouter] POST vote body', {
-        voteId: req.params.id,
-        userId: user_id,
-        body: JSON.stringify(req.body),
-      });
       const result = await ballotService.submitVote(req.params.id, user_id, req.body);
       res.json({ code: 0, data: result });
     } catch (err) {

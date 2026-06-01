@@ -47,15 +47,6 @@ export class BallotService {
       throw new AppError(40001, '参数校验失败', 'option_ids 不能为空');
     }
 
-    // DEBUG: 打印原始 option_ids 类型和值
-    console.info('[BallotService] 收到 option_ids', {
-      voteId,
-      userId,
-      rawOptionIds: body.option_ids,
-      types: body.option_ids.map((v: any) => typeof v),
-      prototypes: body.option_ids.map((v: any) => Object.prototype.toString.call(v)),
-    });
-
     const optionIds = [...new Set(body.option_ids)]; // 去重
     if (optionIds.length !== body.option_ids.length) {
       throw new AppError(40001, '参数校验失败', 'option_ids 不可重复');
