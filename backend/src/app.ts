@@ -12,6 +12,8 @@
 import express from 'express';
 import cors from 'cors';
 import http from 'http';
+import fs from 'fs';
+import path from 'path';
 import { Server as SocketIOServer } from 'socket.io';
 import Redis from 'ioredis';
 
@@ -29,6 +31,27 @@ import { registerWsHandlers, wsAuthMiddleware } from './ws/handlers';
 import type { ClientToServerEvents, ServerToClientEvents } from './types';
 
 async function main(): Promise<void> {
+  // ---- 自动执行数据库迁移 ----
+  console.info('[App] 正在执行数据库迁移...');
+  try {
+    const { knex } = await import('./db/knex');
+    const migrationPath = path.join(__dirname, '..', 'migrations', '001_init.sql');
+    if (fs.existsSync(migrationPath)) {
+      const sql = fs.readFileSync(migrationPath, 'utf-8');
+      await knex.raw(sql);
+      console.info('[App] 数据库迁移完成');
+    } else {
+      console.warn('[App] 未找到迁移文件，跳过:', migrationPath);
+    }
+  } catch (err: any) {
+    // 表已存在时忽略（幂等）
+    if (err.code === '42P07' || err.message?.includes('already exists')) {
+      console.info('[App] 数据库表已存在，跳过迁移');
+    } else {
+      console.error('[App] 数据库迁移失败:', err.message);
+    }
+  }
+
   // ---- 初始化 Redis ----
   const redis = new Redis(config.REDIS_URL, {
     maxRetriesPerRequest: 3,

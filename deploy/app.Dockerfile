@@ -24,7 +24,8 @@ RUN npm ci --include=dev
 
 # 2. 复制源码并编译 TypeScript
 COPY backend/tsconfig.json ./
-COPY backend/src/ ./src/
+COPY backend/src/      ./src/
+COPY backend/migrations/ ./migrations/
 RUN npm run build
 
 # 3. 仅保留运行时依赖（production）
@@ -47,6 +48,7 @@ WORKDIR /app
 COPY --from=builder --chown=vote:vote /build/dist      ./dist
 COPY --from=builder --chown=vote:vote /build/node_modules ./node_modules
 COPY --from=builder --chown=vote:vote /build/package.json ./
+COPY --from=builder --chown=vote:vote /build/migrations  ./migrations
 
 # 切换非 root 用户
 USER vote
