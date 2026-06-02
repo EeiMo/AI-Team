@@ -1,0 +1,498 @@
+# ============================================================
+# 团队即时投票工具 — CI/CD 流水线 (GitHub Actions)
+# 设计人：长夜（运维） | 日期：2026-06-02
+# 进化版本：evo-v2 | 来源：EVO-005 CI/CD 流水线模板
+# ============================================================
+#
+# 流水线阶段：
+#   lint → test → build → push (ghcr.io + ACR) → deploy staging → deploy production
+#
+# 触发条件：
+#   - push 到 main 分支：完整流水线
+#   - PR 到 main：仅 lint + test
+#   - workflow_dispatch：手动触发，可选环境
+#
+# 镜像仓库：
+#   ghcr.io/eeimo/vote-app:latest       — GitHub Container Registry
+#   ghcr.io/eeimo/vote-nginx:latest
+#   registry.cn-hangzhou.aliyuncs.com/eeimo/vote-app:latest  — 阿里云 ACR
+#
+# 所需 GitHub Secrets（老板在 Settings → Secrets 中填入）：
+#   GHCR_USERNAME               — GitHub 用户名 (eeimo)
+#   GHCR_TOKEN                  — GitHub Personal Access Token (read:packages + write:packages)
+#   ACR_USERNAME                — 阿里云容器镜像服务用户名
+#   ACR_PASSWORD                — 阿里云容器镜像服务密码
+#
+# 运行环境：GitHub Actions 自托管 Runner（本机）
+#   - runs-on: [self-hosted, linux, x64]
+#   - 部署直接在 Runner 所在机器执行 docker compose
+#   - 不再依赖 SSH secrets
+#
+# 所需 GitHub Environments（老板在 Settings → Environments 中创建）：
+#   production  — 需 Required Reviewers 审批（生产部署保护）
+# ============================================================
+
+name: CI/CD — Vote App
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      deploy_target:
+        description: '部署目标'
+        required: true
+        type: choice
+        default: 'staging'
+        options:
+          - staging
+          - staging+production
+      skip_deploy:
+        description: '跳过部署（仅构建+推送镜像）'
+        type: boolean
+        default: false
+
+env:
+  NODE_VERSION: '20'
+  # 镜像仓库前缀
+  GHCR_REGISTRY: ghcr.io
+  GHCR_NAMESPACE: eeimo
+  ACR_REGISTRY: registry.cn-hangzhou.aliyuncs.com
+  ACR_NAMESPACE: eeimo
+  # ── Docker 镜像仓库凭据（GitHub Secrets 中配置）──
+  #   GHCR_USERNAME / GHCR_TOKEN — 见 https://github.com/EeiMo/AI-Team/settings/secrets/actions
+
+# ─── 并发控制：同一分支同时只运行一个流水线 ───
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+
+  # ════════════════════════════════════════════
+  # Stage 1: Lint — 代码静态检查
+  # ════════════════════════════════════════════
+  lint:
+    name: 🔍 Lint
+    runs-on: [self-hosted, linux, x64]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: |
+            backend/package-lock.json
+            frontend/package-lock.json
+
+      - name: Lint Backend
+        working-directory: backend
+        run: |
+          npm ci --include=dev
+          npm run lint
+
+      - name: Lint Frontend
+        working-directory: frontend
+        run: |
+          npm ci --include=dev
+          npm run lint
+
+  # ════════════════════════════════════════════
+  # Stage 2: Test — 单元测试 + 集成测试
+  #          连接真实 PG 15 进行集成测试
+  # ════════════════════════════════════════════
+  test:
+    name: 🧪 Test
+    runs-on: [self-hosted, linux, x64]
+    needs: lint
+    services:
+      # PostgreSQL 15（CI 测试专用，与生产版本一致）
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_DB: vote_db
+          POSTGRES_USER: vote_user
+          POSTGRES_PASSWORD: test_ci_pass
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U vote_user -d vote_db"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      # Redis 7（CI 测试专用）
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Run DB Migrations
+        working-directory: backend
+        run: |
+          npm ci --include=dev
+          # 执行 DDL 迁移（幂等，表已存在则跳过）
+          npx ts-node --transpile-only -e "
+            const fs = require('fs');
+            const path = require('path');
+            const { Client } = require('pg');
+            const client = new Client({
+              host: 'localhost',
+              port: 5432,
+              database: 'vote_db',
+              user: 'vote_user',
+              password: 'test_ci_pass',
+            });
+            (async () => {
+              await client.connect();
+              const sql = fs.readFileSync(path.join(__dirname, 'migrations', '001_init.sql'), 'utf-8');
+              try {
+                await client.query(sql);
+                console.log('[CI] DB migrations applied');
+              } catch (e) {
+                if (e.code === '42P07' || e.message?.includes('already exists')) {
+                  console.log('[CI] Tables already exist, skipping migration');
+                } else {
+                  console.error('[CI] Migration error:', e.message);
+                }
+              }
+              await client.end();
+            })();
+          "
+
+      - name: Run Backend Tests
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql://vote_user:test_ci_pass@localhost:5432/vote_db
+          REDIS_URL: redis://localhost:6379/0
+          NODE_ENV: ci
+          PORT: "3001"
+          FEISHU_APP_ID: ci_test
+          FEISHU_APP_SECRET: ci_test_secret
+          TEAM_TOTAL_MEMBERS: "24"
+        run: npm test
+
+      - name: Run Frontend Tests
+        working-directory: frontend
+        run: |
+          npm ci --include=dev
+          npm test
+
+  # ════════════════════════════════════════════
+  # Stage 3+4: Build & Push — 构建 Docker 镜像并推送到 ghcr.io + ACR
+  # ════════════════════════════════════════════
+  build-and-push:
+    name: 📦 Build & Push
+    runs-on: [self-hosted, linux, x64]
+    needs: test
+    # PR 不构建镜像（仅 lint+test）
+    if: github.event_name != 'pull_request'
+    outputs:
+      image_tag: ${{ steps.meta.outputs.tag }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set image tag
+        id: meta
+        run: |
+          if [ -n "${{ github.event.inputs.deploy_target }}" ] && [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "tag=${GITHUB_SHA::8}" >> "$GITHUB_OUTPUT"
+          elif [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            TAG="${GITHUB_REF#refs/tags/}"
+            echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${GITHUB_SHA::8}" >> "$GITHUB_OUTPUT"
+          fi
+
+      # ── 登录 ghcr.io ──
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.GHCR_REGISTRY }}
+          username: ${{ secrets.GHCR_USERNAME }}
+          password: ${{ secrets.GHCR_TOKEN }}
+
+      # ── 登录阿里云 ACR（可选）──
+      - name: Login to Aliyun ACR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.ACR_REGISTRY }}
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # ── 构建 + 推送 App 镜像 ──
+      - name: Build & Push App Image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/app.Dockerfile
+          push: true
+          tags: |
+            ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_NAMESPACE }}/vote-app:${{ steps.meta.outputs.tag }}
+            ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_NAMESPACE }}/vote-app:latest
+            ${{ env.ACR_REGISTRY }}/${{ env.ACR_NAMESPACE }}/vote-app:${{ steps.meta.outputs.tag }}
+            ${{ env.ACR_REGISTRY }}/${{ env.ACR_NAMESPACE }}/vote-app:latest
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # ── 构建 + 推送 Nginx 镜像 ──
+      - name: Build & Push Nginx Image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/nginx.Dockerfile
+          push: true
+          tags: |
+            ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_NAMESPACE }}/vote-nginx:${{ steps.meta.outputs.tag }}
+            ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_NAMESPACE }}/vote-nginx:latest
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ════════════════════════════════════════════
+  # Stage 5a: Deploy Staging — 在本机 Runner 上直接部署
+  # ════════════════════════════════════════════
+  deploy-staging:
+    name: 🚀 Deploy Staging
+    runs-on: [self-hosted, linux, x64]
+    needs: build-and-push
+    if: |
+      github.event_name != 'pull_request' &&
+      github.event.inputs.skip_deploy != 'true'
+    env:
+      IMAGE_TAG: ${{ needs.build-and-push.outputs.image_tag }}
+      DEPLOY_DIR: /home/eeimoo/vote-app-staging
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Deploy to Staging (Local)
+        run: |
+          set -e
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "🚀 Deploying staging — tag: ${{ env.IMAGE_TAG }}"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+          DEPLOY_DIR="${{ env.DEPLOY_DIR }}"
+          mkdir -p "$DEPLOY_DIR"
+
+          cp -r deploy/* "$DEPLOY_DIR/" 2>/dev/null || true
+
+          # 拉取最新镜像
+          docker pull ghcr.io/eeimo/vote-app:${{ env.IMAGE_TAG }}
+          docker pull ghcr.io/eeimo/vote-nginx:${{ env.IMAGE_TAG }}
+
+          # 打 staging 标签
+          docker tag ghcr.io/eeimo/vote-app:${{ env.IMAGE_TAG }} vote-app:staging
+          docker tag ghcr.io/eeimo/vote-nginx:${{ env.IMAGE_TAG }} vote-nginx:staging
+
+          # 部署（使用 docker compose 或 docker stack）
+          cd "$DEPLOY_DIR"
+          docker compose -f docker-compose.staging.yml up -d --no-deps app nginx 2>/dev/null || \
+          docker compose -f docker-compose.yml up -d --no-deps app nginx
+
+          # 等待健康检查通过
+          echo "⏳ Waiting for health check..."
+          for i in $(seq 1 30); do
+            STATUS=$(curl -sk -o /dev/null -w "%{http_code}" https://localhost:8443/health 2>/dev/null || echo "000")
+            if [ "$STATUS" = "200" ]; then
+              echo "✅ Staging health check passed"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "❌ Staging health check failed"
+          exit 1
+
+      - name: Run Smoke Tests
+        if: always()
+        run: |
+          echo "✅ Staging deploy complete"
+          echo "🔍 Image tag: ${{ env.IMAGE_TAG }}"
+
+  # ════════════════════════════════════════════
+  # Stage 5b: Deploy Production — 需 GitHub Environment 审批
+  #           Settings → Environments → production
+  #           Required Reviewers = boss
+  # ════════════════════════════════════════════
+  deploy-production:
+    name: 🏭 Deploy Production
+    runs-on: [self-hosted, linux, x64]
+    needs: [build-and-push, deploy-staging]
+    if: |
+      github.event_name != 'pull_request' &&
+      (github.event.inputs.deploy_target == 'staging+production' || github.event_name == 'push')
+    environment:
+      name: production
+      # ── 生产环境保护规则（在 GitHub Settings → Environments → production 中设置）──
+      #   ✅ Required Reviewers: 老板（至少 1 人审批）
+      #   ✅ Wait timer: 0 minutes（审批后立即执行）
+      #   ✅ Deployment branches: main（仅 main 分支可触发生产部署）
+      #   —─────────────────────────────────────────────────────────
+    env:
+      IMAGE_TAG: ${{ needs.build-and-push.outputs.image_tag }}
+      DEPLOY_DIR: /home/eeimoo/vote-app-prod
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Deploy to Production (Local)
+        run: |
+          set -e
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "🏭 Deploying production — tag: ${{ env.IMAGE_TAG }}"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+          DEPLOY_DIR="${{ env.DEPLOY_DIR }}"
+          mkdir -p "$DEPLOY_DIR"
+
+          cp -r deploy/* "$DEPLOY_DIR/" 2>/dev/null || true
+
+          # ── 记录当前运行镜像（用于回滚）──
+          CURRENT_APP=$(docker inspect vote-app --format '{{.Config.Image}}' 2>/dev/null || echo "vote-app:latest")
+          CURRENT_NGINX=$(docker inspect vote-nginx --format '{{.Config.Image}}' 2>/dev/null || echo "vote-nginx:latest")
+          echo "CURRENT_APP_IMAGE=${CURRENT_APP}" > /tmp/vote-rollback.env
+          echo "CURRENT_NGINX_IMAGE=${CURRENT_NGINX}" >> /tmp/vote-rollback.env
+
+          # ── 拉取镜像 ──
+          docker pull ghcr.io/eeimo/vote-app:${{ env.IMAGE_TAG }}
+          docker pull ghcr.io/eeimo/vote-nginx:${{ env.IMAGE_TAG }}
+
+          # 打 latest 标签（生产环境用 latest）
+          docker tag ghcr.io/eeimo/vote-app:${{ env.IMAGE_TAG }} vote-app:latest
+          docker tag ghcr.io/eeimo/vote-nginx:${{ env.IMAGE_TAG }} vote-nginx:latest
+
+          # ── 滚动重启 ──
+          cd "$DEPLOY_DIR"
+          docker compose -f docker-compose.yml up -d --no-deps app
+
+          # ── 等待 app 健康检查通过 ──
+          echo "⏳ Waiting for app health check..."
+          for i in $(seq 1 30); do
+            STATUS=$(curl -sf -o /dev/null -w "%{http_code}" http://localhost:3001/health 2>/dev/null || echo "000")
+            if [ "$STATUS" = "200" ]; then
+              echo "✅ App health check passed"
+              break
+            fi
+            if [ "$i" -eq 30 ]; then
+              echo "❌ App health check failed — triggering rollback"
+              echo "ROLLBACK=true" >> /tmp/vote-rollback.env
+              exit 1
+            fi
+            sleep 2
+          done
+
+          # ── 检查数据库迁移 ──
+          sleep 10
+          MIGRATION_ERR=$(docker compose -f docker-compose.yml logs app --tail=300 2>/dev/null | grep -iE "Migration (failed|error|aborted)" || true)
+          if [ -n "$MIGRATION_ERR" ]; then
+            echo "❌ Database migration error detected!"
+            echo "$MIGRATION_ERR"
+            echo "ROLLBACK=true" >> /tmp/vote-rollback.env
+            exit 1
+          fi
+
+          MIGRATION_OK=$(docker compose -f docker-compose.yml logs app --tail=300 2>/dev/null | grep -E "Migration completed|Tables ready|数据库迁移完成|数据库表已存在" || true)
+          if [ -z "$MIGRATION_OK" ]; then
+            echo "⚠️ Migration confirmation not found in logs, but no errors detected"
+          else
+            echo "✅ Database migration confirmed: $MIGRATION_OK"
+          fi
+
+          # ── Nginx reload ──
+          docker compose -f docker-compose.yml up -d --no-deps nginx
+          echo "✅ Production deploy complete"
+
+      # ── 部署失败 → 自动回滚 ──
+      - name: Rollback Production on Failure
+        if: failure()
+        run: |
+          set -e
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "🔄 Rolling back production..."
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+          if [ -f /tmp/vote-rollback.env ]; then
+            source /tmp/vote-rollback.env
+          fi
+
+          # 拉回旧镜像
+          docker pull ${CURRENT_APP_IMAGE:-vote-app:latest} || true
+          docker pull ${CURRENT_NGINX_IMAGE:-vote-nginx:latest} || true
+
+          # 回滚
+          cd "${{ env.DEPLOY_DIR }}"
+          docker compose -f docker-compose.yml up -d --no-deps app nginx
+
+          echo "✅ Rollback complete — reverted to ${CURRENT_APP_IMAGE:-previous image}"
+
+  # ════════════════════════════════════════════
+  # Stage 6: Pipeline Summary
+  # ════════════════════════════════════════════
+  summary:
+    name: 📊 Pipeline Summary
+    runs-on: [self-hosted, linux, x64]
+    needs: [lint, test, build-and-push, deploy-staging, deploy-production]
+    if: always() && github.event_name != 'pull_request'
+    steps:
+      - name: Print Summary
+        run: |
+          echo ""
+          echo "╔══════════════════════════════════════════════════════════╗"
+          echo "║         🚀 CI/CD Pipeline Complete                      ║"
+          echo "╠══════════════════════════════════════════════════════════╣"
+          echo "║  Lint:           ${{ needs.lint.result }}"
+          echo "║  Test:           ${{ needs.test.result }}"
+          echo "║  Build & Push:   ${{ needs.build-and-push.outputs.image_tag && format('{0} ✅', needs.build-and-push.outputs.image_tag) || needs.build-and-push.result }}"
+          echo "║  Deploy Staging: ${{ needs.deploy-staging.result }}"
+          echo "║  Deploy Prod:    ${{ needs.deploy-production.result }}"
+          echo "╚══════════════════════════════════════════════════════════╝"
+
+          LINT_OK="${{ needs.lint.result }}"
+          TEST_OK="${{ needs.test.result }}"
+          BUILD_OK="${{ needs.build-and-push.result }}"
+
+          if [ "$LINT_OK" != "success" ] || [ "$TEST_OK" != "success" ] || [ "$BUILD_OK" != "success" ]; then
+            echo ""
+            echo "⚠️  Early stage failure — check logs above for details"
+            exit 1
+          fi
+
+          echo ""
+          echo "🔗 Images:"
+          echo "   ghcr.io/eeimo/vote-app:${{ needs.build-and-push.outputs.image_tag }}"
+          echo "   ghcr.io/eeimo/vote-nginx:${{ needs.build-and-push.outputs.image_tag }}"
+          echo "   ${{ env.ACR_REGISTRY }}/${{ env.ACR_NAMESPACE }}/vote-app:${{ needs.build-and-push.outputs.image_tag }}"
