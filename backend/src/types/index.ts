@@ -134,13 +134,9 @@ export interface SubmitVoteResponse {
 
 export interface CloseVoteResponse {
   vote_id: string;
-  status: string;
+  status: VoteStatus;
+  closed_by: ClosedBy;
   closed_at: string;
-  closed_by: string;
-}
-
-export interface DeleteVoteResponse {
-  deleted: boolean;
 }
 
 // ---- 通用 API 响应 ----

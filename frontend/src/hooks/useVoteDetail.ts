@@ -29,7 +29,6 @@ interface UseVoteDetailReturn {
   dismissReminder: () => void;
   submitVote: (optionIds: string[]) => Promise<SubmitVoteResult>;
   closeVote: () => Promise<boolean>;
-  deleteVote: () => Promise<boolean>;
   refetch: () => Promise<void>;
   closingVote: boolean;
 }
@@ -177,16 +176,6 @@ export function useVoteDetail(voteId: string): UseVoteDetailReturn {
     }
   }, [voteId]);
 
-  // ---- 删除投票 ----
-  const deleteVote = useCallback(async (): Promise<boolean> => {
-    try {
-      await api.delete(`/votes/${voteId}`);
-      return true;
-    } catch {
-      return false;
-    }
-  }, [voteId]);
-
   return {
     vote,
     options,
@@ -199,7 +188,6 @@ export function useVoteDetail(voteId: string): UseVoteDetailReturn {
     dismissReminder,
     submitVote,
     closeVote,
-    deleteVote,
     refetch: fetchDetail,
     closingVote,
   };

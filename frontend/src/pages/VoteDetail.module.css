@@ -264,39 +264,3 @@
 .dialogConfirm:hover {
   background: #d9362e;
 }
-
-/* 删除按钮（和结束按钮并排） */
-.deleteBtn {
-  padding: 12px 32px;
-  font-size: 14px;
-  font-weight: 500;
-  color: #999;
-  background: #fff;
-  border: 1.5px solid #ddd;
-  border-radius: 10px;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.deleteBtn:hover {
-  color: #ff3b30;
-  border-color: #ff3b30;
-  background: #fff0ef;
-}
-
-/* 危险按钮（删除确认弹窗用） */
-.dialogConfirmDanger {
-  flex: 1;
-  padding: 10px;
-  font-size: 14px;
-  font-weight: 500;
-  color: #fff;
-  background: #ff3b30;
-  border: none;
-  border-radius: 8px;
-  cursor: pointer;
-}
-
-.dialogConfirmDanger:hover {
-  background: #d9362e;
-}

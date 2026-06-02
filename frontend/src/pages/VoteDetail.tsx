@@ -33,7 +33,6 @@ export default function VoteDetail() {
     dismissReminder,
     submitVote,
     closeVote,
-    deleteVote,
     closingVote,
   } = useVoteDetail(id!);
 
@@ -42,7 +41,6 @@ export default function VoteDetail() {
   const [submittingVote, setSubmittingVote] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   // 判断当前用户是否为发起者
   const isCreator = useMemo(() => {
@@ -104,17 +102,6 @@ export default function VoteDetail() {
     setShowCloseConfirm(false);
     const ok = await closeVote();
     if (!ok) {
-      alert('操作失败，请稍后重试');
-    }
-  };
-
-  // 删除投票
-  const handleDeleteVote = async () => {
-    setShowDeleteConfirm(false);
-    const ok = await deleteVote();
-    if (ok) {
-      navigate('/votes');
-    } else {
       alert('操作失败，请稍后重试');
     }
   };
@@ -264,12 +251,6 @@ export default function VoteDetail() {
           >
             {closingVote ? '处理中...' : '结束投票'}
           </button>
-          <button
-            className={styles.deleteBtn}
-            onClick={() => setShowDeleteConfirm(true)}
-          >
-            删除投票
-          </button>
         </section>
       )}
 
@@ -293,25 +274,6 @@ export default function VoteDetail() {
               </button>
               <button className={styles.dialogConfirm} onClick={handleCloseVote}>
                 确认结束
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 删除确认弹窗 */}
-      {showDeleteConfirm && (
-        <div className={styles.overlay} onClick={() => setShowDeleteConfirm(false)}>
-          <div className={styles.dialog} onClick={(e) => e.stopPropagation()}>
-            <p className={styles.dialogText}>
-              确定删除此投票吗？此操作不可撤销，所有投票数据将永久丢失。
-            </p>
-            <div className={styles.dialogActions}>
-              <button className={styles.dialogCancel} onClick={() => setShowDeleteConfirm(false)}>
-                取消
-              </button>
-              <button className={styles.dialogConfirmDanger} onClick={handleDeleteVote}>
-                确认删除
               </button>
             </div>
           </div>
