@@ -76,4 +76,4 @@ export const config = {
 
   // 节点环境
   NODE_ENV: process.env.NODE_ENV || 'development',
-} as const;
+};
