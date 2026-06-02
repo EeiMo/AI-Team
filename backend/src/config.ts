@@ -40,7 +40,8 @@ export const config = {
     if (!secret) {
       // 测试和开发环境：用随机值代替，打印警告
       if (env === 'test' || env === 'development') {
-        const { randomBytes } = await import('crypto');
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { randomBytes } = require('crypto');
         const randomSecret = randomBytes(32).toString('hex');
         console.warn('[Config] 警告：JWT_SECRET 未设置，已生成临时随机密钥（每次重启会话失效）');
         return randomSecret;
