@@ -70,6 +70,7 @@ services:
     environment:
       NODE_ENV: ${NODE_ENV}
       PORT: ${PORT}
+      FRONTEND_URL: ${FRONTEND_URL}
       DATABASE_URL: ${DATABASE_URL}
       REDIS_URL: ${REDIS_URL}
       FEISHU_APP_ID: ${FEISHU_APP_ID}
