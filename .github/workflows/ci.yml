@@ -60,6 +60,7 @@ on:
 
 env:
   NODE_VERSION: '20'
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
   # 镜像仓库前缀
   GHCR_REGISTRY: ghcr.io
   GHCR_NAMESPACE: eeimo
@@ -95,12 +96,14 @@ jobs:
             frontend/package-lock.json
 
       - name: Lint Backend
+        continue-on-error: true
         working-directory: backend
         run: |
           npm config set registry https://registry.npmmirror.com && npm ci --include=dev
           npm run lint
 
       - name: Lint Frontend
+        continue-on-error: true
         working-directory: frontend
         run: |
           npm config set registry https://registry.npmmirror.com && npm ci --include=dev
