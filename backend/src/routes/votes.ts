@@ -109,5 +109,18 @@ export function createVoteRouter(
     }
   });
 
+  // ============================================================
+  // DELETE /api/votes/:id — 删除投票（仅创建者）
+  // ============================================================
+  router.delete('/:id', requireUser, async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { user_id, team_id } = req.user!;
+      const result = await voteService.deleteVote(req.params.id, user_id, team_id);
+      res.json({ code: 0, data: result });
+    } catch (err) {
+      next(err);
+    }
+  });
+
   return router;
 }
