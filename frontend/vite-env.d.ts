@@ -10,5 +10,5 @@ interface ImportMeta {
 }
 
 declare global {
-  var IS_TEST: boolean | undefined;
+  let IS_TEST: boolean | undefined;
 }

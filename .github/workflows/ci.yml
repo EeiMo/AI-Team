@@ -97,13 +97,13 @@ jobs:
       - name: Lint Backend
         working-directory: backend
         run: |
-          npm ci --include=dev
+          npm config set registry https://registry.npmmirror.com && npm ci --include=dev
           npm run lint
 
       - name: Lint Frontend
         working-directory: frontend
         run: |
-          npm ci --include=dev
+          npm config set registry https://registry.npmmirror.com && npm ci --include=dev
           npm run lint
 
   # ════════════════════════════════════════════
@@ -154,7 +154,7 @@ jobs:
       - name: Run DB Migrations
         working-directory: backend
         run: |
-          npm ci --include=dev
+          npm config set registry https://registry.npmmirror.com && npm ci --include=dev
           # 执行 DDL 迁移（幂等，表已存在则跳过）
           npx ts-node --transpile-only -e "
             const fs = require('fs');
@@ -199,7 +199,7 @@ jobs:
       - name: Run Frontend Tests
         working-directory: frontend
         run: |
-          npm ci --include=dev
+          npm config set registry https://registry.npmmirror.com && npm ci --include=dev
           npm test
 
   # ════════════════════════════════════════════

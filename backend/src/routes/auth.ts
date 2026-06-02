@@ -139,12 +139,7 @@ async function exchangeCodeForToken(code: string): Promise<{
   expires_in: number;
 }> {
   // 获取 app_access_token
-  let appAccessToken: string;
-  try {
-    appAccessToken = await getAppAccessToken();
-  } catch (err) {
-    throw err;
-  }
+  const appAccessToken = await getAppAccessToken();
 
   const resp = await fetchWithRetry(
     'https://open.feishu.cn/open-apis/authen/v1/oidc/access_token',
