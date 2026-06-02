@@ -2,98 +2,108 @@
  * src/middleware/auth.ts
  * 职责：飞书 SSO 认证中间件
  *      - 从 Authorization header 提取 Bearer token
- *      - 调用飞书 /open-apis/authen/v1/user_info 验签（生产）
- *      - 开发环境回退 dev token 模式
+ *      - Token 类型自动识别：dev token → JWT → 飞书 user_access_token
  *      - 注入 req.user = { user_id, team_id, display_name }
+ *
+ * Token 验证顺序：
+ * 1. dev_ 前缀 → dev 降级模式（保留）
+ * 2. 尝试 JWT 验证（若 JWT_SECRET 已配置）
+ * 3. 调用飞书 /open-apis/authen/v1/user_info 验签（生产）
+ * 4. 回退降级解析
  */
 
 import { Request, Response, NextFunction } from 'express';
+import jwt from 'jsonwebtoken';
 import { config } from '../config';
 
 const DEV_TOKEN_PREFIX = 'dev_';
 
+/** JWT payload 结构 */
+interface JwtUserPayload {
+  user_id: string;
+  team_id: string;
+  display_name: string;
+  iat?: number;
+  exp?: number;
+}
+
 /**
- * 飞书 SSO 验签。生产环境调用飞书 Open API。
+ * 统一 Token 验证入口。
+ *
+ * 按优先级尝试：dev token → JWT → 飞书 API → 降级
  */
 export async function verifyFeishuToken(token: string): Promise<{
   user_id: string;
   team_id: string;
   display_name: string;
 }> {
-  // --- 降级模式：dev 令牌（飞书就绪前，或测试用）---
+  // --- 1. dev 令牌（dev_ 前缀，保留兼容）---
   if (token.startsWith(DEV_TOKEN_PREFIX)) {
+    // dev token 仅限非生产环境使用（CVE-001 修复：防止生产环境 SSO 绕过）
+    if (config.NODE_ENV === 'production') {
+      throw new Error('开发 token 不可在生产环境使用');
+    }
     const parts = token.slice(DEV_TOKEN_PREFIX.length).split('_');
     return {
-      user_id: parts[0] || 'ou_dev_user_001',
-      team_id: parts[1] || 'dev_team_001',
-      display_name: parts[2] || '开发用户',
+      user_id: decodeURIComponent(parts[0] || 'ou_dev_user_001'),
+      team_id: decodeURIComponent(parts[1] || 'dev_team_001'),
+      display_name: decodeURIComponent(parts[2] || '开发用户'),
     };
   }
 
-  // --- 生产模式：调用飞书 Open API ---
-  if (config.NODE_ENV === 'production' && config.FEISHU_APP_ID && config.FEISHU_APP_SECRET) {
-    const appAccessToken = await getAppAccessToken();
-    const userAccessToken = await getUserAccessToken(token, appAccessToken);
-    const res = await fetch(
-      `https://open.feishu.cn/open-apis/authen/v1/user_info`,
-      { headers: { Authorization: `Bearer ${userAccessToken}` } }
-    );
-    if (!res.ok) throw new Error('Feishu SSO 验签失败');
-    const body = await res.json() as any;
-    const user = body?.data;
-    if (!user) throw new Error('Feishu SSO 返回数据异常');
+  // --- 2. 尝试 JWT 验证 ---
+  if (config.JWT_SECRET) {
+    try {
+      const decoded = jwt.verify(token, config.JWT_SECRET) as JwtUserPayload;
+      if (decoded.user_id) {
+        return {
+          user_id: decoded.user_id,
+          team_id: decoded.team_id || '',
+          display_name: decoded.display_name || decoded.user_id,
+        };
+      }
+    } catch (jwtErr: any) {
+      // JWT 验证失败非致命，继续尝试飞书 API
+      if (jwtErr.name === 'TokenExpiredError') {
+        throw new Error('JWT 已过期，请重新登录');
+      }
+      // 其他 JWT 错误（格式不正确等）→ 继续尝试飞书 API
+    }
+  }
+
+  // --- 3. 生产模式：调用飞书 Open API 验证 user_access_token ---
+  if (config.FEISHU_APP_ID && config.FEISHU_APP_SECRET) {
+    try {
+      const res = await fetch(
+        `https://open.feishu.cn/open-apis/authen/v1/user_info`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      if (res.ok) {
+        const body = await res.json() as any;
+        const user = body?.data;
+        if (user) {
+          return {
+            user_id: user.open_id || user.user_id,
+            team_id: user.tenant_key || '',
+            display_name: user.name || user.en_name || user.open_id,
+          };
+        }
+      }
+    } catch {
+      // 飞书 API 不可用时继续降级
+    }
+  }
+
+  // --- 4. 降级：直接解析 token（仅开发/测试环境）---
+  if (config.NODE_ENV !== 'production') {
     return {
-      user_id: user.open_id || user.user_id,
-      team_id: user.tenant_key || '',
-      display_name: user.name || user.en_name || user.open_id,
+      user_id: token.substring(0, 64),
+      team_id: config.TEAM_TOTAL_MEMBERS > 0 ? 'env_team' : 'unknown',
+      display_name: token.substring(0, 32),
     };
   }
 
-  // 非 dev 环境下无飞书凭证，降级解析 token 为 user_id
-  return {
-    user_id: token.substring(0, 64),
-    team_id: config.TEAM_TOTAL_MEMBERS > 0 ? 'env_team' : 'unknown',
-    display_name: token.substring(0, 32),
-  };
-}
-
-/** 获取飞书应用 access_token（缓存 1.5h） */
-let _cachedAppToken: { token: string; expires: number } | null = null;
-
-async function getAppAccessToken(): Promise<string> {
-  if (_cachedAppToken && Date.now() < _cachedAppToken.expires) {
-    return _cachedAppToken.token;
-  }
-  const res = await fetch('https://open.feishu.cn/open-apis/auth/v3/app_access_token/internal', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ app_id: config.FEISHU_APP_ID, app_secret: config.FEISHU_APP_SECRET }),
-  });
-  if (!res.ok) throw new Error('获取飞书 app_access_token 失败');
-  const body = await res.json() as any;
-  _cachedAppToken = {
-    token: body.app_access_token,
-    expires: Date.now() + (body.expire || 7200) * 1000 - 600_000, // 提前 10 分钟刷新
-  };
-  return _cachedAppToken.token;
-}
-
-/** 用 user_access_token 换取 user_info */
-async function getUserAccessToken(code: string, appAccessToken: string): Promise<string> {
-  const res = await fetch('https://open.feishu.cn/open-apis/authen/v1/oidc/access_token', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${appAccessToken}`,
-    },
-    body: JSON.stringify({
-      grant_type: 'authorization_code',
-      code,
-    }),
-  });
-  if (!res.ok) throw new Error('换取 user_access_token 失败');
-  const body = await res.json() as any;
-  return body.data?.access_token || body.access_token;
+  throw new Error('Token 验证失败');
 }
 
 /**

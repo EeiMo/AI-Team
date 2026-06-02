@@ -27,6 +27,7 @@ import { startDeadlineWorker } from './services/deadlineWorker';
 import { startTallySync } from './services/tallySync';
 import { startRedisHealth } from './services/redisHealth';
 import { createVoteRouter } from './routes/votes';
+import { createAuthRouter } from './routes/auth';
 import { registerWsHandlers, wsAuthMiddleware } from './ws/handlers';
 import type { ClientToServerEvents, ServerToClientEvents } from './types';
 
@@ -35,21 +36,29 @@ async function main(): Promise<void> {
   console.info('[App] 正在执行数据库迁移...');
   try {
     const { knex } = await import('./db/knex');
-    const migrationPath = path.join(__dirname, '..', 'migrations', '001_init.sql');
-    if (fs.existsSync(migrationPath)) {
-      const sql = fs.readFileSync(migrationPath, 'utf-8');
-      await knex.raw(sql);
-      console.info('[App] 数据库迁移完成');
-    } else {
-      console.warn('[App] 未找到迁移文件，跳过:', migrationPath);
+    // 迁移文件按文件名排序执行
+    const migrationsDir = path.join(__dirname, '..', 'migrations');
+    const migrationFiles = fs.existsSync(migrationsDir)
+      ? fs.readdirSync(migrationsDir).filter(f => f.endsWith('.sql')).sort()
+      : [];
+
+    for (const file of migrationFiles) {
+      const sqlPath = path.join(migrationsDir, file);
+      try {
+        const sql = fs.readFileSync(sqlPath, 'utf-8');
+        await knex.raw(sql);
+        console.info('[App] 迁移执行成功:', file);
+      } catch (err: any) {
+        // 表/索引/扩展已存在时忽略（幂等）
+        if (err.code === '42P07' || err.message?.includes('already exists') || err.message?.includes('already exist')) {
+          console.info('[App] 迁移跳过（已存在）:', file);
+        } else {
+          console.error('[App] 迁移执行失败:', file, err.message);
+        }
+      }
     }
   } catch (err: any) {
-    // 表已存在时忽略（幂等）
-    if (err.code === '42P07' || err.message?.includes('already exists')) {
-      console.info('[App] 数据库表已存在，跳过迁移');
-    } else {
-      console.error('[App] 数据库迁移失败:', err.message);
-    }
+    console.error('[App] 迁移目录读取失败:', err.message);
   }
 
   // ---- 初始化 Redis ----
@@ -88,9 +97,14 @@ async function main(): Promise<void> {
   });
 
   // ---- 路由 ----
-  // API 路由需要认证
+
+  // 1. 认证路由（无需认证 — 白名单）
+  const authRouter = createAuthRouter(redis);
+  app.use('/api/auth', authRouter);
+
+  // 2. API 路由（需要认证）
   const apiRouter = express.Router();
-  apiRouter.use(auth); // 所有 /api/* 都要飞书 SSO
+  apiRouter.use(auth); // 所有受保护的 /api/* 都要飞书 SSO
 
   // 创建 HTTP 服务器（供 Socket.IO 共享）
   const server = http.createServer(app);

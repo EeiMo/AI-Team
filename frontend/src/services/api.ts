@@ -79,4 +79,33 @@ export class ApiError extends Error {
   }
 }
 
+// ---- 飞书 SSO 认证 API ----
+export interface FeishuAuthResponse {
+  token: string;
+  user_id: string;
+  display_name: string;
+  avatar_url?: string;
+}
+
+/** 获取飞书 SSO 跳转 URL（备用：直接返回 redirect_uri，前端负责跳转） */
+export async function getFeishuRedirectUrl(): Promise<string> {
+  const res = await api.get<ApiResponse<{ redirect_url: string }>>('/auth/feishu/redirect-url');
+  return res.data.data!.redirect_url;
+}
+
+/** 飞书 OAuth 回调：用 code 换取 token + 用户信息 */
+export async function feishuCallback(code: string, state: string): Promise<FeishuAuthResponse> {
+  const res = await api.get<ApiResponse<FeishuAuthResponse>>('/auth/feishu/callback', {
+    params: { code, state },
+  });
+  return res.data.data!;
+}
+
+/** 校验 token 有效性 */
+export async function verifyToken(): Promise<{ user_id: string; display_name: string }> {
+  const res = await api.get<ApiResponse<{ user_id: string; display_name: string }>>('/auth/verify');
+  return res.data.data!;
+}
+
 export default api;
+export { api };

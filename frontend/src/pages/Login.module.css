@@ -1,35 +1,130 @@
+/* Login.module.css — 飞书 SSO + dev 降级登录页样式 */
+
 .container {
   display: flex;
   align-items: center;
   justify-content: center;
   min-height: 100vh;
-  background: #f5f6f8;
+  background: linear-gradient(135deg, #f0f2ff 0%, #f5f6f8 50%, #f0f7f4 100%);
 }
 
 .card {
   background: #fff;
-  border-radius: 12px;
-  padding: 40px 36px;
+  border-radius: 16px;
+  padding: 44px 40px;
   width: 100%;
-  max-width: 400px;
-  box-shadow: 0 2px 16px rgba(0,0,0,0.08);
+  max-width: 420px;
+  box-shadow: 0 4px 24px rgba(51, 112, 255, 0.08), 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+/* ---- 头部 ---- */
+.header {
+  text-align: center;
+  margin-bottom: 32px;
+}
+
+.logoWrapper {
+  margin-bottom: 16px;
+}
+
+.logo {
+  display: inline-block;
 }
 
 .title {
   font-size: 24px;
   font-weight: 700;
-  text-align: center;
   margin: 0 0 8px;
   color: #1f2329;
 }
 
 .subtitle {
-  text-align: center;
   color: #8f959e;
-  margin: 0 0 28px;
+  margin: 0;
   font-size: 14px;
 }
 
+/* ---- SSO 区域 ---- */
+.ssoSection {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+.feishuButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  max-width: 320px;
+  padding: 14px 0;
+  border: none;
+  border-radius: 10px;
+  background: #3370ff;
+  color: #fff;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s, box-shadow 0.2s, transform 0.1s;
+  box-shadow: 0 2px 8px rgba(51, 112, 255, 0.3);
+}
+
+.feishuButton:hover {
+  background: #2860e1;
+  box-shadow: 0 4px 14px rgba(51, 112, 255, 0.4);
+  transform: translateY(-1px);
+}
+
+.feishuButton:active {
+  transform: translateY(0);
+  box-shadow: 0 1px 4px rgba(51, 112, 255, 0.2);
+}
+
+.feishuIcon {
+  flex-shrink: 0;
+}
+
+.devToggle {
+  background: none;
+  border: none;
+  color: #8f959e;
+  font-size: 13px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: color 0.2s, background 0.2s;
+}
+
+.devToggle:hover {
+  color: #3370ff;
+  background: rgba(51, 112, 255, 0.05);
+}
+
+/* ---- Divider ---- */
+.divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 8px 0 4px;
+}
+
+.divider::before,
+.divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: #e5e6eb;
+}
+
+.dividerText {
+  font-size: 12px;
+  color: #bbbfc4;
+  white-space: nowrap;
+}
+
+/* ---- 表单 ---- */
 .form {
   display: flex;
   flex-direction: column;
@@ -51,18 +146,25 @@
   border-radius: 8px;
   font-size: 15px;
   outline: none;
-  transition: border-color 0.2s;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  background: #fafbfc;
 }
 
 .input:focus {
   border-color: #3370ff;
-  box-shadow: 0 0 0 2px rgba(51,112,255,0.15);
+  box-shadow: 0 0 0 3px rgba(51, 112, 255, 0.12);
+  background: #fff;
+}
+
+.input::placeholder {
+  color: #bbbfc4;
 }
 
 .error {
   color: #f53f3f;
   font-size: 13px;
   margin: 0;
+  text-align: center;
 }
 
 .button {
@@ -81,9 +183,51 @@
   background: #2860e1;
 }
 
+.devButton {
+  padding: 12px 0;
+  border: 1px solid #dee0e3;
+  border-radius: 8px;
+  background: #f5f6f8;
+  color: #646a73;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+
+.devButton:hover {
+  background: #e8eaed;
+  color: #1f2329;
+}
+
+/* ---- 底部 ---- */
 .footer {
   text-align: center;
   color: #bbbfc4;
   font-size: 12px;
   margin: 24px 0 0;
+}
+
+/* ---- AuthCallback 加载状态 ---- */
+.loadingSpinner {
+  width: 36px;
+  height: 36px;
+  margin: 0 auto 16px;
+  border: 3px solid #e5e6eb;
+  border-top-color: #3370ff;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.loadingText {
+  text-align: center;
+  color: #8f959e;
+  font-size: 14px;
+  margin: 0;
 }

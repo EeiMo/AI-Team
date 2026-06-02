@@ -94,7 +94,9 @@ export function createRateLimiter(redis: Redis) {
     }
 
     const userId = req.user!.user_id;
-    const voteId = req.params.id;
+    // req.params 由路由匹配填充，中间件阶段尚未填充；从 req.path 提取 vote_id
+    const voteId = req.params.id || (req.path.match(/^\/([^/]+)\/vote$/) || [])[1];
+    if (!voteId) return next();
     const key = `rate:${userId}:${voteId}`;
     const nowMs = Date.now().toString();
 
