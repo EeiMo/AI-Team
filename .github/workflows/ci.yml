@@ -187,6 +187,11 @@ jobs:
             })();
           "
 
+      - name: Install Backend Dependencies
+        working-directory: backend
+        run: |
+          npm config set registry https://registry.npmmirror.com && npm ci --include=dev
+
       - name: Run Backend Tests
         working-directory: backend
         env:
