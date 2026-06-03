@@ -10,23 +10,24 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { useNetworkStore } from '../store';
-import type { WsVoteUpdate, WsVoteClosed, WsReminder } from '../types';
+import type { WsVoteUpdate, WsVoteClosed, WsVoteDeleted, WsReminder } from '../types';
 
 interface UseSocketOptions {
   voteId: string;
   onUpdate?: (payload: WsVoteUpdate) => void;
   onClosed?: (payload: WsVoteClosed) => void;
+  onDeleted?: (payload: WsVoteDeleted) => void;
   onReminder?: (payload: WsReminder) => void;
   onReconnect?: () => void;
 }
 
-export function useSocket({ voteId, onUpdate, onClosed, onReminder, onReconnect }: UseSocketOptions) {
+export function useSocket({ voteId, onUpdate, onClosed, onDeleted, onReminder, onReconnect }: UseSocketOptions) {
   const socketRef = useRef<Socket | null>(null);
   const { setConnected, setDegraded } = useNetworkStore();
-  const callbacksRef = useRef({ onUpdate, onClosed, onReminder, onReconnect });
+  const callbacksRef = useRef({ onUpdate, onClosed, onDeleted, onReminder, onReconnect });
 
   // 保持回调引用最新，避免 useEffect 重复绑定
-  callbacksRef.current = { onUpdate, onClosed, onReminder, onReconnect };
+  callbacksRef.current = { onUpdate, onClosed, onDeleted, onReminder, onReconnect };
 
   useEffect(() => {
     const token = localStorage.getItem('feishu_token') ?? '';
@@ -80,6 +81,11 @@ export function useSocket({ voteId, onUpdate, onClosed, onReminder, onReconnect 
       callbacksRef.current.onClosed?.(payload);
     });
 
+    // ---- 投票删除事件 ----
+    socket.on(`vote:${voteId}:deleted`, (payload: WsVoteDeleted) => {
+      callbacksRef.current.onDeleted?.(payload);
+    });
+
     // ---- 截止提醒事件 ----
     socket.on(`vote:${voteId}:reminder`, (payload: WsReminder) => {
       callbacksRef.current.onReminder?.(payload);
@@ -94,6 +100,7 @@ export function useSocket({ voteId, onUpdate, onClosed, onReminder, onReconnect 
       socket.off('reconnect');
       socket.off(`vote:${voteId}:update`);
       socket.off(`vote:${voteId}:closed`);
+      socket.off(`vote:${voteId}:deleted`);
       socket.off(`vote:${voteId}:reminder`);
       socket.disconnect();
       socketRef.current = null;

@@ -1,30 +1,65 @@
-/* ResultChart.module.css — 图表组件样式 */
+/* ResultChart.module.css — 图表组件样式（U-03 优化） */
 
-.container {
+.resultCard {
+  background: var(--color-bg-card);
+  border-radius: var(--radius-xl);
+  padding: 16px;
   margin: 20px 0;
+  box-shadow: var(--shadow-sm);
+  border: 1px solid transparent;
+  transition:
+    box-shadow var(--transition-base),
+    border-color var(--transition-base);
+  animation: fadeIn var(--transition-slow) ease both;
+}
+
+.resultCard:hover {
+  box-shadow: var(--shadow-md);
+  border-color: rgba(51, 112, 255, 0.06);
+}
+
+.resultHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.resultTitle {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text);
+  margin: 0;
+}
+
+.updateTime {
+  font-size: 12px;
+  color: var(--color-text-tertiary);
 }
 
 .chart {
   width: 100%;
   height: 260px;
+  transition: height var(--transition-base);
 }
 
 .summary {
   text-align: center;
   font-size: 13px;
-  color: #666;
+  color: var(--color-text-secondary);
   margin-top: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
 }
 
-.summary strong {
-  color: #3370FF;
+.totalCount {
+  color: var(--color-primary);
   font-size: 16px;
-  margin: 0 2px;
 }
 
 .anonymousHint {
-  display: block;
   font-size: 12px;
-  color: #999;
-  margin-top: 4px;
+  color: var(--color-text-tertiary);
 }

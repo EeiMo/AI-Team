@@ -1,692 +1,902 @@
-# 测试计划文档 — 团队即时投票工具
+# 测试计划 — 投票应用 v3（创建人删除投票 + 前端美工优化）
 
-> 版本：v1.1 | 撰写人：寻错 🔍 | 日期：2026-06-01
-> 关联 PRD：v1.1 | 关联架构：v1.1
+> 版本：v3 | 撰写人：寻错 🔍 | 日期：2026-06-03
+> 关联 PRD：PRD_v3.md | 关联架构：ARCH_v3.md
+> 测试类型：增量测试（基于 v1.2 基线）
 
 ---
 
 ## 目录
 
-1. [测试策略](#一测试策略)
-2. [单元测试用例](#二单元测试用例)
-3. [集成测试用例（API 端点）](#三集成测试用例api-端点)
-4. [WebSocket 测试方案](#四websocket-测试方案)
-5. [E2E 测试场景](#五e2e-测试场景)
-6. [性能测试方案](#六性能测试方案)
-7. [测试数据清单](#七测试数据清单)
-8. [测试覆盖矩阵](#八测试覆盖矩阵)
+1. [测试范围与策略](#一测试范围与策略)
+2. [测试金字塔预算](#二测试金字塔预算)
+3. [强制场景覆盖](#三强制场景覆盖)
+4. [删除功能全量测试（M1-核心）](#四删除功能全量测试m1-核心)
+5. [前端交互测试（删除流程 UI + WS 联动）](#五前端交互测试删除流程-ui--ws-联动)
+6. [级联清理验证（PG + Redis + WS 联动）](#六级联清理验证pg--redis--ws-联动)
+7. [越权测试（非创建者调用 DELETE）](#七越权测试非创建者调用-delete)
+8. [前端美工验收测试（M2-UI 一致性）](#八前端美工验收测试m2-ui-一致性)
+9. [安全审查测试](#九安全审查测试)
+10. [WebSocket 专项测试](#十websocket-专项测试)
+11. [回归测试范围](#十一回归测试范围)
+12. [测试环境与数据准备](#十二测试环境与数据准备)
+13. [缺陷严重度定义](#十三缺陷严重度定义)
+14. [退出标准](#十四退出标准)
 
 ---
 
-## 一、测试策略
+## 一、测试范围与策略
 
-### 1.1 测试策略概述
+### 1.1 测试范围
 
+| 模块 | 范围描述 | 分类 |
+|------|---------|------|
+| **M1-删除功能** | 创建者删除投票（正常/边界/异常/幂等） | 🔴 核心 |
+| **M1-级联清理** | PG 软删除 + Redis tally/deadline 清理 + WS 广播 + 房间清理 + 审计日志 | 🔴 核心 |
+| **M1-越权防护** | 非创建者调用 DELETE API、跨团队删除、越权按钮可见性 | 🔴 核心 |
+| **M1-WS 联动** | WS `vote:{id}:deleted` 事件广播、在线用户实时响应、断线重连后一致性 | 🟡 重要 |
+| **M2-前端美化** | 色彩系统统一、实时计票 UI 升级、全局动效、空/错状态、移动端适配 | 🟡 重要 |
+| **M2-删除交互** | 删除按钮样式、确认弹窗、淡出移除动效、已删除占位页 | 🟡 重要 |
+| **安全审查** | 鉴权双保险校验、CSRF 防护、审计日志完整性、Redis 降级安全 | 🔴 核心 |
+
+### 1.2 测试策略
+
+| 维度 | 策略 |
+|------|------|
+| **测试方法** | 手动测试为主（人工验收），配合单元测试覆盖核心逻辑 |
+| **测试分层** | UTs（deleteService 逻辑） + 集成测试（API 端点） + E2E（全链路交互） |
+| **覆盖原则** | 全部 AC 编号覆盖（AC-301-1 ~ AC-309-5） + 扩展边界/异常路径 |
+| **环境依赖** | dev 环境（docker-compose），独立 PG + Redis 实例 |
+
+---
+
+## 二、测试金字塔预算
+
+| 层级 | 计划用例数 | 计划占比 | 目标占比 |
+|------|-----------|---------|---------|
+| 单元测试 | 16 | 35% | ≤ 50% |
+| 集成/环境 | 22 | 48% | ≥ 40% |
+| E2E | 8 | 17% | ≥ 10% |
+| **合计** | **46** | **100%** | |
+
+---
+
+## 三、强制场景覆盖
+
+| 强制场景 | 计划用例数 | 覆盖说明 | 预计完成 |
+|----------|-----------|---------|----------|
+| 数据库迁移完整性 | 3 | 验证 votes.del_flag 字段 + audit_logs 表 DDL + 索引 | Day 1 |
+| knex raw 跨版本 | 2 | tallySync raw query 在 del_flag 过滤下的兼容性 | Day 1 |
+| Docker 产物验证 | 2 | 构建后容器可启动、健康检查通过 | Day 1 |
+| 从零初始化全链路 | 3 | 空库→迁移→创建/删除/验证完整链路 | Day 2 |
+
+---
+
+## 四、删除功能全量测试（M1-核心）
+
+> 覆盖 AC-301-1 ~ AC-301-11，外加扩展边界/异常路径。
+
+### 4.1 正常场景（4 条）
+
+#### TC-DEL-001：创建者删除进行中的投票
 | 字段 | 内容 |
 |------|------|
-| 项目名称 | 团队即时投票工具 |
-| 测试版本 | v1.1 |
-| 撰写人 | 寻错 |
-| 日期 | 2026-06-01 |
-| 测试范围 | MVP 全量功能：创建投票、参与投票、实时看板、手动/自动结束、最终结果、投票列表、隐私声明 |
+| **关联 AC** | AC-301-1 |
+| **前置条件** | 用户 A 创建投票 T1（status=`active`），用户 A 为创建者 |
+| **测试步骤** | ① 用户 A 在列表页点击 T1 卡片的删除按钮 → ② 确认弹窗显示投票标题 → ③ 点击「确认删除」 |
+| **预期结果** | ① 返回 HTTP 200，`{ code: 0, message: '投票已删除' }` <br>② PG `votes.del_flag` = TRUE，`deleted_at` 非空，`deleted_by` = 用户 A ID <br>③ Redis `vote:{id}:tally` 已删除（DEL 成功） <br>④ Redis `vote:{id}:deadline` 已删除 <br>⑤ WS 广播 `vote:{id}:deleted` 事件 <br>⑥ `audit_logs` 表新增一条 `action='DELETE_VOTE'` 记录 <br>⑦ 前端 toast「投票已删除」 |
+| **环境** | dev, PG + Redis | **类型** | 集成 | **级别** | P0 |
 
-### 1.2 测试金字塔与分层策略
-
-```
-            ╱  E2E  ╲           Cypress / Playwright  — 4 个核心用户旅程
-           ╱          ╲
-          ╱  Integration ╲       Vitest + supertest   — 5 个 API 端点全覆盖
-         ╱                ╲
-        ╱   Unit Tests     ╲     Vitest               — 状态机、限流Lua、防重
-       ╱────────────────────╲
-```
-
-### 1.3 各层覆盖范围与工具选型
-
-| 测试层 | 覆盖范围 | 工具 | 覆盖率目标 | 关键验证点 |
-|--------|----------|------|-----------|-----------|
-| **单元测试** | 状态机（8 个路径）、限流 Lua 脚本（4 个场景）、防重检查、输入校验、工具函数 | Vitest | 状态机 100%、限流 4/4 场景 | 纯逻辑正确性，无 I/O 依赖 |
-| **集成测试** | 5 个 REST API 端点 + WS 事件 + 防刷三层联动 | Vitest + supertest + ioredis mock / testcontainers | 33 条 AC 全覆盖 | API 契约正确性、错误码规范、三层防刷串联 |
-| **E2E 测试** | 4 个核心用户旅程（匿名×单选、实名×多选、边界条件、异常路径） | Playwright（headless Chromium） | 关键路径 100% | 真实浏览器渲染、WS 实时同步、乐观更新回滚 |
-| **性能测试** | 200 并发 WS 连接、投票 API 压测、ECharts 渲染基准 | k6 / Artillery | P99 满足 PRD 指标 | WS 广播延迟 ≤2s、API P99 ≤200ms |
-
-### 1.4 测试环境要求
-
-| 项目 | 说明 |
+#### TC-DEL-002：创建者删除已结束的投票
+| 字段 | 内容 |
 |------|------|
-| Node.js | ≥20 LTS |
-| PostgreSQL | 15（含 testcontainers 或独立实例） |
-| Redis | 7.x（含 `notify-keyspace-events Ex` 配置） |
-| 浏览器 | Chromium 120+（Playwright） |
-| 飞书 SSO Mock | 本地 mock 飞书 token 验签服务（或 stub middleware） |
-| 团队总人数 | `TEAM_TOTAL_MEMBERS=24`（大写死值，便于验证参与率） |
+| **关联 AC** | AC-301-2 |
+| **前置条件** | 用户 A 创建投票 T2（status=`closed`），用户 A 为创建者 |
+| **测试步骤** | ① 用户 A 在详情页点击删除按钮 → ② 确认弹窗 → ③ 点击「确认删除」 |
+| **预期结果** | 同 TC-DEL-001，删除成功；审计日志可追溯 |
+| **环境** | dev, PG + Redis | **类型** | 集成 | **级别** | P0 |
 
-### 1.5 缺陷流转规则
-
-```
-发现缺陷 → Bug 报告（复现步骤/预期实际结果/截图日志）→ EeiMoo
-EeiMoo 判定归属 → 转发对应开发（凌霜/流光）
-开发修复 → 修复说明 → EeiMoo 转发寻错
-寻错回归 → 通过则关闭 / 不通过追加信息退回
-```
-
----
-
-## 二、单元测试用例
-
-> 工具：Vitest | 无外部 I/O 依赖（Redis/PG 均用 mock 或 stub）
-
-### 2.1 状态机单元测试（8 个路径）
-
-**测试对象**：`VoteService` / `BallotService` 状态转换逻辑（mock PG + Redis）
-
-| 编号 | 测试路径 | 初始状态 | 操作 | 预期结果 | 验证方法 |
-|------|----------|----------|------|----------|----------|
-| UT-SM-01 | 正常创建投票 → active | 无 | `VoteService.create()` | 返回 `status: 'active'`，deadline = now + deadline_minutes，options 数量正确，redis tally 全部初始化为 0 | 断言返回值 status 字段 + mock Redis HSET 调用参数 |
-| UT-SM-02 | active → 手动关闭 | `status='active'`，发起者是操作者 | `VoteService.closeVote(voteId, creatorId)` | 返回 `status: 'closed', closed_by: 'manual'`，触发 `DEL vote:{id}:deadline`，WS 广播 `vote:{id}:closed` | 断言 PG UPDATE 参数 + mock Redis DEL 调用 + mock io.to().emit() 调用 |
-| UT-SM-03 | active → 自动关闭 | `status='active'`，deadline < now | `DeadlineWorker.closeVoteAutomatically(voteId)` | 返回 `status: 'closed', closed_by: 'auto'`，仅当 UPDATE 影响行数 >0 时广播 | 断言 PG UPDATE WHERE status='active' 影响行数 + mock io.to().emit() |
-| UT-SM-04 | 手动结束与自动结束并发 | 两个操作几乎同时到达 | Thread A: `closeVote(manual)`，Thread B: `closeVoteAutomatically(auto)` | 先执行者胜（status 变为 closed），后执行者 `WHERE status='active'` 匹配 0 行，静默跳过不报错 | 模拟事务时序：Thread A 先获取 FOR UPDATE 锁并更新 → Thread B 的 WHERE status='active' 无匹配行 |
-| UT-SM-05 | 提交投票时投票被手动结束 | `status='active'`，事务开始时突然变为 `closed` | `BallotService.submitVote()` 内 `FOR UPDATE` 后读到 `status='closed'` | 返回 403，PG 未写入 user_votes，Redis HINCRBY 未执行 | 断言 rollback 调用 + 错误码 40301 |
-| UT-SM-06 | 提交投票时投票被自动结束 | 同 UT-SM-05，由自动结束触发 | 同上 | 返回 403，行为与手动结束一致 | 同上 |
-| UT-SM-07 | 同一用户并发提交两次投票 | 同一 userId + voteId，两个请求同时到达 | 两次 INSERT INTO user_votes | 第一次成功，第二次触发 UNIQUE(vote_id, user_id) → PG error 23505 → 返回 409 | 模拟 PG unique_violation 错误码 23505 → 断言返回 40901 |
-| UT-SM-08 | 服务重启后兜底扫描 | 存在 `status='active' AND deadline < NOW()` 的投票 | `startupRecoveryScan()` 执行 | 全部到期投票被标记为 closed，closed_by='auto' | 断言 db update 调用次数 = 到期投票数，每条含 closed_by='auto' |
-
-### 2.2 限流 Lua 脚本单元测试（4 个场景）
-
-**测试对象**：`RATE_LIMIT_SCRIPT` Lua 脚本（使用 `ioredis` mock 或 `redis-memory-server`）
-
-| 编号 | 测试场景 | 前置条件 | 调用参数 | 预期结果 | 验证方法 |
-|------|----------|----------|----------|----------|----------|
-| UT-RL-01 | 窗口内第 1 次请求（通过） | 空 Sorted Set | `now=100000, window=60000, max=3` | 返回 0（OK），ZSET 中有 1 条记录 | 断言 `redis.eval` 返回 0，验证 ZADD 被调用 |
-| UT-RL-02 | 窗口内第 3 次请求（仍通过） | ZSET 中已有 2 条记录（score=100001, 100002） | `now=100003, window=60000, max=3` | 返回 0（OK），ZSET 中有 3 条记录 | 断言 ZCARD 返回 2 → ZADD 执行 → 最终 3 条 |
-| UT-RL-03 | 窗口内第 4 次请求（拒绝） | ZSET 中已有 3 条记录（100001, 100002, 100003） | `now=100004, window=60000, max=3` | 返回 `[最早时间戳, 最早score]`（非 0 = 拒绝），ZSET 仍为 3 条 | 断言返回值非 0，验证 ZCARD=3 后未执行 ZADD |
-| UT-RL-04 | 窗口过期清理后通过 | ZSET 中有 4 条记录，其中 3 条在窗口外（score=30000, 31000, 32000），1 条在窗口内（score=99000） | `now=100000, window=60000, max=3` | 先 ZREMRANGEBYSCORE 清理 3 条过期 → ZCARD=1 → 通过 → ZADD 新增 1 条 | 断言 ZREMRANGEBYSCORE 被调用（清理 3 条），ZCARD 返回 1，ZADD 执行 |
-| UT-RL-05 | 降级内存 Map 清理 | 内存 Map 中有 20 个 entry，其中 15 个 >1 分钟无新记录 | `setInterval` 触发清理 | 存活 entry ≤5 个（仅保留最近活跃），日志输出 `remaining_entries` | 断言 Map.size 减少，验证 `DEGRADE_ENTRY_MAX_AGE=60000` 过滤 |
-
-### 2.3 防重检查单元测试
-
-| 编号 | 测试场景 | 模拟 PG 行为 | 预期结果 |
-|------|----------|-------------|----------|
-| UT-DD-01 | 首次投票 → UNIQUE 约束未触发 | mock INSERT 成功（无异常） | `submitVote` 返回成功，继续执行 HINCRBY + WS 广播 |
-| UT-DD-02 | 重复投票 → UNIQUE 约束触发 | mock INSERT 抛出 error.code='23505' | 捕获异常 → 返回 40901 '您已投过票'，不执行 HINCRBY |
-| UT-DD-03 | FOR UPDATE 锁竞争 | mock `trx('votes')...forUpdate()` 等待超时 | 返回 50000 或超时错误，事务回滚 |
-| UT-DD-04 | 事务中 status 已变为 closed | mock `FOR UPDATE` 后读到 `status='closed'` | 抛出 40301 '投票已结束'，事务回滚 |
-
-### 2.4 输入校验单元测试
-
-| 编号 | 测试场景 | 输入 | 预期结果 |
-|------|----------|------|----------|
-| UT-VL-01 | title 为空字符串 | `title: ''` | 校验失败，返回 'title 不能为空' |
-| UT-VL-02 | title 超过 100 字符 | `title: 'x' * 101` | 校验失败，返回 'title 长度须在 1-100 之间' |
-| UT-VL-03 | options 为空数组 | `options: []` | 校验失败，返回 'options 数量须在 2-10 之间' |
-| UT-VL-04 | options 只有 1 项 | `options: ['A']` | 校验失败 |
-| UT-VL-05 | options 有 11 项 | `options: ['A'...'K']` | 校验失败 |
-| UT-VL-06 | options 有重复值 | `options: ['A', 'B', 'A']` | 校验失败，返回 '选项不可重复' |
-| UT-VL-07 | option 内容超 50 字符 | `options: ['正常', 'x'*51]` | 校验失败 |
-| UT-VL-08 | deadline_minutes = 0 | `deadline_minutes: 0` | 校验失败，返回 'deadline_minutes 须在 1-10080 之间' |
-| UT-VL-09 | deadline_minutes = 10081 | `deadline_minutes: 10081` | 校验失败 |
-| UT-VL-10 | vote_type 不在枚举值 | `vote_type: 'ranked'` | 校验失败 |
-| UT-VL-11 | vote_mode 不在枚举值 | `vote_mode: 'hidden'` | 校验失败 |
-| UT-VL-12 | option_ids 为空（提交投票） | `option_ids: []` | 校验失败，返回 'option_ids 不能为空' |
-| UT-VL-13 | option_ids 中包含不存在的 option | `option_ids: [uuid_not_in_vote]` | 校验失败，返回 'option_ids 中有不属于本投票的选项' |
-
----
-
-## 三、集成测试用例（API 端点）
-
-> 工具：Vitest + supertest + testcontainers（PG + Redis 真实实例）
-> 前置：每个 describe 前执行 DDL 初始化，每个 test 后清理测试数据
-
-### 3.1 POST /api/votes — 创建投票
-
-| 编号 | 关联 AC | 测试场景 | 前置条件 | 请求体 | 预期 HTTP 状态 | 预期响应 body | 验证项 |
-|------|---------|----------|----------|--------|---------------|--------------|--------|
-| IT-CV-01 | AC-001-1 | 正常：创建单选实名投票 | 有效 token，team_id=2ed263bf32ae1655 | `{title:'团建投票', options:['A','B','C'], vote_type:'single', vote_mode:'public', deadline_minutes:30}` | 201 | `code:0, data.vote.status:'active', data.vote.vote_type:'single', data.vote.vote_mode:'public'` | PG 中 votes/options 写入正确；Redis 中 `vote:{id}:tally` 所有 option 初始化为 0；`vote:{id}:deadline` key 存在且 TTL ≈ 1800s |
-| IT-CV-02 | AC-001-2 | 正常：创建多选匿名投票（默认） | 有效 token | `{title:'多选测试', options:['X','Y','Z','W','V'], vote_type:'multi', vote_mode:'anonymous', deadline_minutes:15}` | 201 | `data.vote.vote_mode:'anonymous', data.vote.vote_type:'multi'` | options 数量=5；creator_name 从 token 提取写入 |
-| IT-CV-03 | AC-001-3 | 边界：选项数=2（最小值） | 有效 token | `{title:'最少选项', options:['仅此','而已'], vote_type:'single', vote_mode:'anonymous', deadline_minutes:5}` | 201 | 创建成功 | options 数量=2 |
-| IT-CV-04 | AC-001-4 | 边界：选项数=10（最大值） | 有效 token | options 数组 10 项 | 201 | 创建成功 | options 数量=10 |
-| IT-CV-05 | AC-001-5 | 边界：标题长度 100 字 | 有效 token | title 为 100 字符 | 201 | 创建成功，title 完整存储 | PG 中 title 长度=100 |
-| IT-CV-06 | AC-001-6 | 边界：截止时间 1 分钟 | 有效 token | `deadline_minutes:1` | 201 | 创建成功，deadline ≈ now+1min | Redis `vote:{id}:deadline` TTL≈60s |
-| IT-CV-07 | AC-001-7 | 异常：标题为空 | 有效 token | `title:''` | 400 | `code:40001, detail:'title 不能为空'` | PG 未写入任何记录 |
-| IT-CV-08 | AC-001-8 | 异常：选项有重复 | 有效 token | `options:['A','B','A']` | 400 | `code:40003, detail:'选项不可重复'` | — |
-| IT-CV-09 | AC-001-9 | 异常：选项有空值 | 有效 token | `options:['A','']` | 400 | `code:40001`，提示选项非空 | — |
-| IT-CV-10 | AC-001-10 | 异常：网络中断（模拟） | mock PG 连接超时 | 正常请求体 | 500 | `code:50000` | 前端表单数据保留（E2E 验证） |
-| IT-CV-11 | — | 异常：未认证 | 无 Authorization header | 正常请求体 | 401 | `code:40100` | — |
-| IT-CV-12 | — | 边界：deadline_minutes=10080（最大值） | 有效 token | `deadline_minutes:10080` | 201 | 创建成功 | Redis TTL≈604800s |
-| IT-CV-13 | — | 异常：deadline_minutes>10080 | 有效 token | `deadline_minutes:10081` | 400 | `code:40004` | — |
-| IT-CV-14 | — | 异常：options 数量=11 | 有效 token | 11 个选项 | 400 | `code:40002` | — |
-
-### 3.2 GET /api/votes — 投票列表
-
-| 编号 | 关联 AC | 测试场景 | 前置条件 | 请求参数 | 预期 HTTP 状态 | 预期响应 | 验证项 |
-|------|---------|----------|----------|-----------|---------------|----------|--------|
-| IT-VL-01 | AC-007-1 | 正常：列表展示进行中投票 | PG 中有 3 个 active 投票，均属于当前 team_id | `?status=active&page=1&size=20` | 200 | `data.items.length:3, data.total:3` | 每项含 title、vote_type、vote_mode、deadline、vote_count；按 team_id 过滤 |
-| IT-VL-02 | AC-007-2 | 边界：无进行中投票 | PG 中所有投票均为 closed | `?status=active` | 200 | `data.items:[], data.total:0` | 空数组 |
-| IT-VL-03 | AC-007-3 | 正常：切换已结束 Tab | PG 中有 2 个 closed 投票 | `?status=closed` | 200 | `data.items.length:2` | 每项 status 均为 'closed' |
-| IT-VL-04 | — | 边界：分页第 2 页 | PG 中有 25 个 active 投票 | `?status=active&page=2&size=20` | 200 | `data.items.length:5, data.total:25, data.page:2` | 仅含第 21-25 条 |
-| IT-VL-05 | — | 边界：size=100（最大值） | PG 中有 50 个 active 投票 | `?size=100` | 200 | `data.items.length:50` | — |
-| IT-VL-06 | — | 异常：page=0 | — | `?page=0` | 400 | 参数校验失败 | — |
-| IT-VL-07 | — | 异常：size=101 | — | `?size=101` | 400 | 参数校验失败 | — |
-| IT-VL-08 | — | 安全：跨团队不可见 | team_A 创建 2 个投票，team_B token 请求 | `?status=active` | 200 | `data.items:[]`（仅返回本团队投票） | team_id 过滤生效 |
-| IT-VL-09 | — | creator_name 快照验证 | 创建投票后修改 SSO token 中的 name | `?status=active` | 200 | creator_name 仍为创建时的快照值 | 不从 token 重新获取 |
-
-### 3.3 GET /api/votes/:id — 投票详情
-
-| 编号 | 关联 AC | 测试场景 | 前置条件 | 预期 HTTP 状态 | 预期响应 | 验证项 |
-|------|---------|----------|----------|---------------|----------|--------|
-| IT-VD-01 | AC-003-1 | 正常：匿名模式 voters 为空 | vote_mode='anonymous'，status='active' | 200 | `data.vote.options[*].voters:[]`（所有选项 voters 为空数组） | 字段级过滤生效，无 user_id 泄露 |
-| IT-VD-02 | AC-003-2 | 正常：实名模式返回 voters | vote_mode='public'，已有 2 人投票 | 200 | `data.vote.options[*].voters` 含投票人 user_id+user_name | voters 数组非空 |
-| IT-VD-03 | AC-003-5 | 边界：无人投票 | 投票刚创建，0 人投票 | 200 | 所有 `options[*].count:0`，百分比为 0% | tally 全为 0 |
-| IT-VD-04 | AC-003-6 | 边界：所有人已投票 | 24 人均已投票（单选） | 200 | 各 option count 之和=24 | tally 与 PG user_votes 一致 |
-| IT-VD-05 | AC-006-1 | 正常：已结束投票展示最终结果 | status='closed' | 200 | `data.vote.status:'closed'`，options 有票数/百分比 | closed_at/closed_by 存在 |
-| IT-VD-06 | AC-006-2 | 正常：实名+已结束显示投票人明细 | vote_mode='public'，status='closed' | 200 | options[*].voters 含完整名单 | 不可折叠（前端验证） |
-| IT-VD-07 | AC-006-3 | 正常：匿名+已结束不显示投票人 | vote_mode='anonymous'，status='closed' | 200 | options[*].voters:[] | 仍为空数组 |
-| IT-VD-08 | — | 正常：has_voted=true（已投票用户） | 当前用户已投该投票 | 200 | `data.has_voted:true, data.my_selected_options:[...]` | my_selected_options 仅含自己的选项 |
-| IT-VD-09 | — | 正常：has_voted=false（未投票用户） | 当前用户未投该投票 | 200 | `data.has_voted:false, data.my_selected_options:[]` | — |
-| IT-VD-10 | — | 安全：匿名模式下发起者也不能看到 voters | vote_mode='anonymous'，发起者 token 请求 | 200 | voters:[] | 即使是发起者，匿名模式下也不泄露 |
-| IT-VD-11 | — | 安全：实名模式下发起者看到完整 voters | vote_mode='public'，发起者 token | 200 | voters 含所有投票人信息 | — |
-| IT-VD-12 | — | 异常：vote_id 不存在 | 随机 UUID | 404 | `code:40400` | — |
-| IT-VD-13 | — | 安全：跨团队不可查看详情 | team_B token 请求 team_A 的投票 | 404 或 403 | 不可访问其他团队投票 | team_id 校验 |
-
-### 3.4 POST /api/votes/:id/vote — 提交投票
-
-| 编号 | 关联 AC | 测试场景 | 前置条件 | 请求体 | 预期 HTTP 状态 | 预期响应 | 验证项 |
-|------|---------|----------|----------|--------|---------------|----------|--------|
-| IT-SV-01 | AC-002-1 | 正常：单选提交 1 个选项 | active 单选投票，用户未投 | `{option_ids:[optA_id]}` | 200 | `code:0` | PG user_votes 写入 1 条；Redis `HINCRBY vote:{id}:tally optA 1` → count +1；WS 广播 `vote:{id}:update` |
-| IT-SV-02 | AC-002-2 | 正常：多选提交 3 个选项 | active 多选投票，用户未投 | `{option_ids:[optA_id, optB_id, optC_id]}` | 200 | `code:0` | PG user_votes selected_options 数组长度=3；Redis 3 个 field 各 +1 |
-| IT-SV-03 | AC-002-3 | 边界：多选只选 1 项 | active 多选投票 | `{option_ids:[optA_id]}` | 200 | 成功 | 数组长度=1，允许 |
-| IT-SV-04 | AC-002-4 | 边界：多选全选（5 项） | active 多选投票，5 个选项 | `{option_ids:[全部5个ID]}` | 200 | 成功 | 5 项全部选上 |
-| IT-SV-05 | AC-002-5 | 异常：未选择任何选项 | active 投票 | `{option_ids:[]}` | 400 | `code:40001` | 或按钮置灰（前端验证） |
-| IT-SV-06 | AC-002-6 | 异常：已投票用户再次提交 | 用户已投过此投票 | `{option_ids:[optA_id]}` | 409 | `code:40901, message:'您已投过票'` | PG UNIQUE 约束触发 23505 |
-| IT-SV-07 | AC-002-7 | 异常：投票已结束后提交 | status='closed' | `{option_ids:[optA_id]}` | 403 | `code:40301, message:'投票已结束'` | — |
-| IT-SV-08 | — | 异常：option_ids 含不属于本投票的 ID | 另一投票的 option_id | `{option_ids:[other_opt_id]}` | 400 | `code:40005` | 选项归属校验 |
-| IT-SV-09 | — | 异常：速率限制第 4 次请求 | 同一 userId+voteId，60s 内已有 3 次提交（含失败重试） | `{option_ids:[optA_id]}` | 429 | `code:42900` + `Retry-After` 头 | Redis Sorted Set 中该 key 有 3 条记录 |
-| IT-SV-10 | — | 并发：5 个用户同时提交 | 5 个不同 userId，同一 vote，同一 option | 并发 5 个 POST | 全部 200 | Redis tally 该 option count=5 | HINCRBY 原子性保证 |
-| IT-SV-11 | — | 并发：同一用户并发 2 次提交 | 同一 userId+voteId，几乎同时 | 并发 2 个 POST | 1 个 200 + 1 个 409 | 仅写入 1 条 user_votes，Redis count 仅 +1 | UNIQUE 约束兜底 |
-| IT-SV-12 | — | 乐观更新回滚验证 | mock Redis HINCRBY 成功但 WS 广播前 PG 写入已成功 | 正常提交 | 200 | 前端收到 WS 回推时 count 与乐观更新一致，不重复+1 | 需配合前端 E2E 验证 |
-
-### 3.5 POST /api/votes/:id/close — 结束投票
-
-| 编号 | 关联 AC | 测试场景 | 前置条件 | 预期 HTTP 状态 | 预期响应 | 验证项 |
-|------|---------|----------|----------|---------------|----------|--------|
-| IT-CL-01 | AC-004-1 | 正常：发起者手动结束 | 发起者 token，active 投票 | 200 | `code:0, data.status:'closed', data.closed_by:'manual'` | PG votes.status='closed'；Redis `vote:{id}:deadline` key 被 DEL；WS 广播 `vote:{id}:closed` |
-| IT-CL-02 | AC-004-2 | 异常：非发起者尝试结束 | 普通参与者 token | 403 | `code:40302, message:'仅投票发起者可结束投票'` | PG status 未变 |
-| IT-CL-03 | AC-004-3 | 异常：发起者取消确认 | — | — | — | 前端验证：弹窗取消 → 状态不变 |
-| IT-CL-04 | — | 异常：投票已结束 | status='closed' | 409 | `code:40902, message:'投票已结束'` | — |
-| IT-CL-05 | — | 异常：vote_id 不存在 | 随机 UUID | 404 | `code:40400` | — |
-| IT-CL-06 | — | 安全：跨团队不可结束 | team_B 成员请求 team_A 的投票 | 403 | 权限拒绝 | team_id 校验 |
-| IT-CL-07 | — | 并发：手动结束 vs 自动结束 | 几乎同时触发 | 200（先到者） | 后到者 `WHERE status='active'` 无匹配行，静默不报错 | 条件 UPDATE + 影响行数 |
-
----
-
-## 四、WebSocket 测试方案
-
-> 工具：自定义 WS 测试脚本（Node.js `socket.io-client` + 多实例并发）或 k6 WebSocket
-
-### 4.1 多客户端实时同步测试
-
-| 编号 | 测试场景 | 前置条件 | 操作步骤 | 预期结果 | 验证方法 |
-|------|----------|----------|----------|----------|----------|
-| WS-SYNC-01 | 3 客户端同时进入投票页 | 创建 active 匿名单选投票（4 个选项），3 个客户端已认证并 join `vote:{id}` room | Client A 提交投票选中 option_1 → 等待 ≤2s | Client B、Client C 在 ≤2s 内收到 `vote:{id}:update` 事件，option_1 count+=1，图表自动更新 | 监听 3 个客户端的 WS 事件接收时间戳，计算最大延迟 |
-| WS-SYNC-02 | 3 客户端分别投不同选项 | 同上 | Client A 投 opt_1，Client B 投 opt_2，Client C 投 opt_3 | 三个客户端最终图表显示 opt_1=1, opt_2=1, opt_3=1（总计 3 票） | 等待所有事件到达后，断言各客户端图表数据一致 |
-| WS-SYNC-03 | 发送者不收到自己的 WS 广播 | Client A 已 join room | Client A 提交投票 | Client A 不收到 `vote:{id}:update` 事件（由乐观更新处理），仅 Client B/C 收到 | 断言 Client A 的 WS 监听器未触发 update 事件回调 |
-| WS-SYNC-04 | WS 接入层验证（Nginx proxy + ip_hash） | 2 个 app 实例（模拟扩展），同一客户端 2 次连接 | 客户端断开重连 | 2 次连接均路由到同一 app 实例（ip_hash 生效） | 检查 app 日志中同一 client IP 的连接记录 |
-
-### 4.2 断线重连 + 消息补偿测试
-
-| 编号 | 测试场景 | 前置条件 | 操作步骤 | 预期结果 | 验证方法 |
-|------|----------|----------|----------|----------|----------|
-| WS-RC-01 | 投票页 WS 断开期间有人投票 | Client A、Client B 进入同一投票页 | 1. 中断 Client B 网络（或 kill app 进程触发容器重启）2. Client A 投票 2 次 3. 恢复 Client B 网络 | Client B 重连后：黄色横幅消失 → 全量拉取 GET `/votes/:id` → 图表更新至最新（含 A 的 2 票） | Socket.IO 自动重连 + `refetchVoteDetail()` 触发；验证 tally 与 PG 一致 |
-| WS-RC-02 | 投票页 WS 断开期间投票结束 | Client A 在投票页，投票剩余 10s | 1. 中断 Client A 网络 2. 等待投票自动结束 3. 恢复 Client A 网络 | Client A 重连后拉取详情 → 发现 status='closed' → 页面切换为已结束状态 | 验证 `vote:{id}:closed` 事件虽丢失，但全量拉取覆盖 |
-| WS-RC-03 | 指数退避重连 | Client 主动断开 | 观察 `reconnectionDelay` 序列 | 第 1 次: 1s, 第 2 次: 2s, 第 3 次: 4s, ... 最大 30s | Socket.IO 配置验证 |
-| WS-RC-04 | app 滚动重启时客户端行为 | `docker-compose up -d --no-deps app` | 观察客户端 WS 状态 | 断开 → 自动重连（≤30s）→ 重连后全量拉取数据 → 状态一致 | 验证断开到恢复的端到端时间 ≤35s |
-
-### 4.3 截止时间自动结束测试
-
-| 编号 | 测试场景 | 前置条件 | 操作步骤 | 预期结果 | 验证方法 |
-|------|----------|----------|----------|----------|----------|
-| WS-AE-01 | 倒计时归零自动结束 | 创建投票 `deadline_minutes=1`（测试用缩短时间） | 等待 60s（或 mock Redis TTL 过期事件更快） | 所有在线客户端收到 `vote:{id}:closed`（closed_by:'auto'）；投票详情 API 返回 status='closed' | 监听 WS 事件 + 查询 PG 状态 |
-| WS-AE-02 | 手动结束阻止自动结束重复触发 | 创建投票 deadline=10min | 发起者手动结束 → 手动结束后 Redis deadline key 被删除 → 原始 TTL 到期不触发 | `vote:{id}:closed` 仅触发 1 次（手动结束那次），closed_by='manual' | 确认无重复 closed 事件 |
-| WS-AE-03 | 截止前 1 分钟提醒 | 创建投票 `deadline_minutes=2` | 等待到剩余 60s | 所有在线客户端收到 `vote:{id}:reminder {remaining_seconds:60}` | 监听 WS reminder 事件 |
-| WS-AE-04 | Redis 不可用时自动结束兜底 | 停止 Redis 容器 | 等待投票 deadline 到期 | 应用层兜底扫描（每 10s）检测到 deadline < NOW() → 执行关闭 → 广播 | 降级模式下自动化结束仍生效 |
-| WS-AE-05 | 服务重启后兜底恢复 | kill app 进程，存在 3 个已到期未结束的 active 投票 | `docker restart vote-app` | 启动后 `startupRecoveryScan()` 扫描并结束全部 3 个投票，closed_by='auto' | 检查 PG 中 3 条记录 status 均变为 'closed' |
-
-### 4.4 并发投票原子性测试
-
-| 编号 | 测试场景 | 前置条件 | 操作步骤 | 预期结果 | 验证方法 |
-|------|----------|----------|----------|----------|----------|
-| WS-CONC-01 | 5 个客户端同时提交同一选项 | 5 个已认证的 socket 客户端，均 join 同一 vote room | 几乎同时 POST `/api/votes/:id/vote`（`Promise.all`） | 全部返回 200；Redis HINCRBY 后该 option count=5；WS 广播 5 次 `vote:{id}:update`，每次 new_count 递增 1 | 断言 Redis tally 最终值 + 监听 WS 广播次数 |
-| WS-CONC-02 | 20 个客户端同时提交不同选项 | 20 个客户端，10 个选项，每选项 2 人 | 同时提交 | 每选项 count=2，总计 20 票 | Redis tally 逐项验证 |
-| WS-CONC-03 | 并发提交 + WS 广播完整性 | 10 个客户端，1 个监听客户端 | 10 个客户端同时提交，监听客户端记录所有 WS update 事件 | 监听客户端收到的 WS 事件数=10，最终 tally 与 API 一致 | 计数 WS 事件 + 查询 API 对账 |
-| WS-CONC-04 | 并发提交 vs 投票结束竞态 | 5 个客户端提交时发起者在另一个线程执行 close | 同时触发 | 提交要么成功（若在 FOR UPDATE 锁获取前）要么返回 403（若在锁之后）；WS 只广播成功的投票 | 验证一致性：PG user_votes count = Redis tally 各 field 之和 |
-
----
-
-## 五、E2E 测试场景
-
-> 工具：Playwright（headless Chromium） | 完整用户旅程，真实浏览器渲染
-
-### 5.1 完整用户旅程矩阵
-
-| 场景编号 | 旅程描述 | 投票类型 | 投票模式 | 关键验证点 |
-|----------|----------|----------|----------|-----------|
-| E2E-J1 | 匿名+单选：创建→投票→结束→查看结果 | single | anonymous | 隐私声明展示、实名信息不可见、乐观更新、自动结束 |
-| E2E-J2 | 实名+多选：创建→投票→结束→查看结果 | multi | public | 投票人明细可见、多选项提交、手动结束 |
-| E2E-J3 | 边界条件：2 选项+100 字标题+1 分钟截止 | single | anonymous | 极值输入通过、快速自动结束 |
-| E2E-J4 | 异常路径：乐观更新失败回滚 + 重复投票拒绝 | single | anonymous | 回滚提示、数据恢复正确 |
-
-### 5.2 详细 E2E 用例
-
-#### E2E-J1：匿名单选完整旅程
-
-**测试角色**：Creator（发起者）、VoterA（参与者）、VoterB（参与者）
-**浏览器实例**：3 个独立 context（模拟 3 个不同用户）
-
-| 步骤 | 操作者 | 操作 | 预期结果 |
-|------|--------|------|----------|
-| 1 | Creator | 登录 → 进入 `/votes/new` → 填写标题「团建投票」→ 添加 3 个选项「杭州/苏州/无锡」→ 确认为单选+匿名（默认）→ 设置截止 5 分钟 → 点击发布 | 跳转到 `/votes/:id`，页面显示投票详情（进行中），3 个选项均为 0 票 |
-| 2 | VoterA | 登录 → 进入同一投票页 | 看到匿名隐私声明蓝色提示条；选项区可交互；图表 3 柱皆为 0 |
-| 3 | VoterB | 登录 → 进入同一投票页 | 同上 |
-| 4 | VoterA | 选中「杭州」→ 点击「提交投票」 | 按钮变为「✓ 已投票」；本端图表「杭州」柱立即变为 1 票（乐观更新）；匿名 voters 不可见 |
-| 5 | VoterB | 观察图表变化（不操作） | ≤2s 内「杭州」柱从 0→1，无用户头像/姓名 |
-| 6 | Creator | 观察图表 | 「杭州」=1 票，无用户身份信息 |
-| 7 | VoterA | 尝试再次点击选项 | 选项只读，不可改选，底部显示「投票已提交，不可更改」 |
-| 8 | Creator | 点击「结束投票」→ 确认弹窗 → 确认 | 所有 3 个浏览器页面切换为「已结束」状态，最终结果展示「杭州 1 票 100%」 |
-| 9 | Creator | 查看结果页 | 无投票人明细（匿名+已结束也不暴露），总票数=1 |
-
-#### E2E-J2：实名多选完整旅程
-
-| 步骤 | 操作者 | 操作 | 预期结果 |
-|------|--------|------|----------|
-| 1 | Creator | 创建多选+实名投票，4 个选项，截止 10 分钟 | 发布成功 |
-| 2 | VoterA | 进入投票页，勾选 2 个选项 → 提交 | 提交成功，柱状图更新 |
-| 3 | VoterB | 进入投票页，勾选 3 个选项（不同组合）→ 提交 | 提交成功 |
-| 4 | VoterA | hover 图表某选项柱 | 出现浮层，展示投该选项的用户列表（头像+姓名） |
-| 5 | Creator | 手动结束投票 | 投票结束 |
-| 6 | Creator | 查看最终结果 | 各选项显示投票人明细（头像+姓名，不可折叠），总票数=各选项票数之和（无重复计数） |
-| 7 | VoterA | 查看最终结果 | 同样可见投票人明细（实名模式下信息公开） |
-
-#### E2E-J3：边界条件旅程
-
-| 步骤 | 操作者 | 操作 | 预期结果 |
-|------|--------|------|----------|
-| 1 | Creator | 打开创建页 → 删除选项至只剩 2 个 → 输入 100 字标题 → 设置截止 1 分钟 | 「+ 添加选项」可用（可添加至 10）；计数器显示 100/100；截止时间可设为 1 |
-| 2 | Creator | 发布 | 发布成功 |
-| 3 | Creator | 观察倒计时 | 从 01:00 递减 → 00:10 红色闪烁 → 00:00 自动结束 |
-| 4 | Creator | 验证结果 | status='closed', closed_by='auto' |
-
-#### E2E-J4：异常路径 + 乐观更新回滚
-
-| 步骤 | 操作者 | 操作 | 预期结果 |
-|------|--------|------|----------|
-| 1 | Creator | 创建匿名单选投票 | 发布成功 |
-| 2 | VoterA | 进入投票页 | 正常显示 |
-| 3 | — | Mock 服务端：提交投票 API 返回 409（模拟后端判定重复投票） | — |
-| 4 | VoterA | 选中选项 → 点击提交 | 本端图表先乐观更新 +1；收到 409 响应后回滚（撤销 +1）；toast 显示「您已投过票」；主动拉取最新状态 |
-| 5 | VoterA | 验证图表 | 图表数据与 API 返回一致（回滚后正确） |
-| 6 | Creator | 手动结束投票 | 结束成功 |
-| 7 | VoterA | 重新进入已结束投票页 | 选项只读，不可投票，仅展示最终结果 |
-
----
-
-## 六、性能测试方案
-
-### 6.1 测试工具与环境
-
-| 项目 | 配置 |
+#### TC-DEL-003：删除后其他在线用户收到 WS 更新
+| 字段 | 内容 |
 |------|------|
-| 压测工具 | k6（推荐）或 Artillery |
-| 目标环境 | Docker Compose 部署的完整四容器（nginx+app+pg+redis） |
-| 压测机 | 与目标同网段，避免网络成为瓶颈 |
-| 监控 | `GET /health/metrics` 实时指标 + Docker stats |
-| 预热 | 压测前执行 30s 预热（10 并发），确保连接池充满 |
+| **关联 AC** | AC-301-3 |
+| **前置条件** | 用户 A（创建者）和用户 B（非创建者）同时在线；用户 A 在详情页 T1，用户 B 在列表页 |
+| **测试步骤** | ① 用户 A 执行删除 T1 → ② 观察用户 B 的页面变化 |
+| **预期结果** | ① 用户 B 列表页中 T1 卡片淡出移除 <br>② 用户 A 详情页切换为「已删除」占位页（非 404 白屏） |
+| **环境** | dev 双实例或单实例双窗口 | **类型** | E2E | **级别** | P0 |
 
-### 6.2 WebSocket 并发连接测试
+#### TC-DEL-004：删除后 WS 断线用户重新进入
+| 字段 | 内容 |
+|------|------|
+| **关联 AC** | AC-301-4 |
+| **前置条件** | 用户 C WS 断开（页面保持打开但无实时连接） |
+| **测试步骤** | ① 用户 A 删除 T1 → ② 用户 C 刷新页面 / 关闭重开 |
+| **预期结果** | ① 列表页已无 T1（API 层已过滤 `del_flag=FALSE`）<br>② 直接输入 `/votes/:id` 进入详情页，显示「已删除」占位页 |
+| **环境** | dev | **类型** | E2E | **级别** | P1 |
 
-| 编号 | 测试场景 | 并发量 | 持续时间 | 操作 | 成功标准 | 监控指标 |
-|------|----------|--------|----------|------|----------|----------|
-| PERF-WS-01 | 200 客户端同时建立 WS 连接 | 200 | — | 依次建立连接 → join `vote:{id}` room | 全部 200 连接成功建立，无拒绝/超时；连接建立 P99 ≤3s | WS 连接数=200；Nginx worker_connections 未耗尽 |
-| PERF-WS-02 | 200 客户端保持连接 + 持续广播 | 200 | 5 分钟 | 每 2s 由 1 个客户端提交 1 次投票 → 广播到其余 199 个 | 广播延迟 P99 ≤2s；无消息丢失；所有客户端 tally 一致 | WS 广播延迟直方图；Socket.IO rooms.size=1 |
-| PERF-WS-03 | 粘性会话稳定性 | 200 | 10 分钟 | 每 30s 随机断开 10 个客户端重连 | 重连客户端 100% 路由到同一 app 实例（ip_hash 生效） | Nginx access log 分析 |
+### 4.2 边界场景（3 条）
 
-### 6.3 API 压测
+#### TC-DEL-005：非创建者不可见删除按钮
+| 字段 | 内容 |
+|------|------|
+| **关联 AC** | AC-301-5 |
+| **前置条件** | 用户 B 是团队普通成员（非投票 T1 创建者） |
+| **测试步骤** | ① 用户 B 进入列表页 → ② 查看 T1 卡片 → ③ 进入 T1 详情页 |
+| **预期结果** | ① 列表页 T1 卡片无删除按钮/图标 <br>② 详情页发起者专属操控区无删除按钮 |
+| **环境** | dev | **类型** | 集成 | **级别** | P0 |
 
-| 编号 | 测试场景 | 并发 VU | 持续时间 | 目标 API | 吞吐目标 | 响应时间目标 |
-|------|----------|---------|----------|----------|----------|-------------|
-| PERF-API-01 | 投票列表查询 | 50 VU × 2min | 斜坡 30s → 稳态 90s | `GET /api/votes?status=active&page=1&size=20` | ≥200 RPS | P99 ≤100ms |
-| PERF-API-02 | 投票详情查询 | 50 VU × 2min | 同上 | `GET /api/votes/:id` | ≥200 RPS | P99 ≤100ms |
-| PERF-API-03 | 创建投票 | 20 VU × 2min | 同上 | `POST /api/votes` | ≥50 RPS | P99 ≤200ms |
-| PERF-API-04 | 提交投票 | 30 VU × 3min | 同上 | `POST /api/votes/:id/vote` | ≥100 RPS | P99 ≤200ms |
-| PERF-API-05 | 混合负载（模拟真实场景） | 100 VU × 5min | 同上 | 70% GET 列表/详情 + 20% POST 投票 + 10% POST 创建 | — | 错误率 <0.1% |
+#### TC-DEL-006：已删除投票再次调用 DELETE（幂等）
+| 字段 | 内容 |
+|------|------|
+| **关联 AC** | AC-301-7 |
+| **前置条件** | 投票 T1 已被删除（`del_flag=TRUE`） |
+| **测试步骤** | ① 创建者携带 JWT 调用 `DELETE /api/votes/:id` |
+| **预期结果** | 返回 `200 { code: 0, message: '投票已删除' }`（幂等成功，非 404） |
+| **环境** | dev | **类型** | 集成 | **级别** | P1 |
 
-### 6.4 Redis 降级场景性能
+#### TC-DEL-007：创建者删除其他团队的投票（跨团队越权）
+| 字段 | 内容 |
+|------|------|
+| **关联 AC** | AC-301-8 |
+| **前置条件** | 用户 A 属于 team_id=1，投票 T3 的 team_id=2 |
+| **测试步骤** | ① 用户 A 构造请求携带自己 token，调用 `DELETE /api/votes/:id`（T3） |
+| **预期结果** | 返回 HTTP 403，`{ code: 40304, message: '无权删除此投票' }` |
+| **环境** | dev | **类型** | 集成 | **级别** | P0 |
 
-| 编号 | 测试场景 | 配置 | 预期 |
-|------|----------|------|------|
-| PERF-DG-01 | Redis 正常 vs 降级对比 | 先正常压测 → 停止 Redis → 再压测 | 降级后 API P99 升高（PG 聚合查询替代 HGETALL）但功能可用；确认 `health:degraded` 标志位正确 |
-| PERF-DG-02 | 降级恢复 | Redis 重启后 | `health:degraded` 清除 → TallySync 重建所有 tally → 性能恢复到正常水平 |
+### 4.3 异常场景（3 条）
 
-### 6.5 ECharts 渲染基准
+#### TC-DEL-008：网络中断时删除操作
+| 字段 | 内容 |
+|------|------|
+| **关联 AC** | AC-301-9 |
+| **前置条件** | 用户 A 在列表页，网络可控制断开 |
+| **测试步骤** | ① 用户 A 点击确认删除 → ② 在 API 调用前断开网络（DevTools → Offline） |
+| **预期结果** | ① 前端 loading 旋转中 <br>② 超时后退回，显示 toast「网络异常，请稍后重试」<br>③ 投票状态保持不变（列表页仍显示 T1） |
+| **环境** | dev（浏览器 DevTools 模拟） | **类型** | E2E | **级别** | P1 |
 
-| 编号 | 测试场景 | 数据量 | 测量方法 | 目标 |
-|------|----------|--------|----------|------|
-| PERF-ECH-01 | 10 选项首次渲染 | 10 个 option，票数随机 1-10 | `performance.mark` 测量 `setOption` 耗时 | ≤100ms |
-| PERF-ECH-02 | 增量更新（WS 推送） | 已有 10 柱，增量更新 1 柱 | 同上前后 `setOption` 差分对比 | ≤30ms |
-| PERF-ECH-03 | 移动端弱设备渲染 | 模拟 CPU 4x slowdown（Playwright） | 同 PERF-ECH-01 | ≤300ms（弱设备允许放宽） |
+#### TC-DEL-009：Redis 不可用时删除操作
+| 字段 | 内容 |
+|------|------|
+| **关联 AC** | AC-301-10 |
+| **前置条件** | Redis 服务停止（`docker stop redis`），用户 A 为创建者 |
+| **测试步骤** | ① 用户 A 执行删除 T1 |
+| **预期结果** | ① DB 软删除成功（del_flag=TRUE）<br>② Redis tally/deadline 清理失败，记录 error 日志，**不阻塞主流程**<br>③ 返回 200，前端正常更新 |
+| **环境** | dev（手动停止 Redis） | **类型** | 集成 | **级别** | P1 |
 
----
+#### TC-DEL-010：有人已投票时创建者删除
+| 字段 | 内容 |
+|------|------|
+| **关联 AC** | AC-301-11 |
+| **前置条件** | 投票 T1 为 active，已有 5 人投票 |
+| **测试步骤** | ① 创建者删除 T1 |
+| **预期结果** | ① 删除成功（del_flag=TRUE）<br>② `user_votes` 表数据完整保留（已投数据不丢失）<br>③ 其他用户详情页变为「已删除」状态 |
+| **环境** | dev | **类型** | 集成 | **级别** | P1 |
 
-## 七、测试数据清单
+### 4.4 幂等性专项（2 条）
 
-### 7.1 前置数据 SQL
+#### TC-DEL-011：同一投票连续三次 DELETE
+| 字段 | 内容 |
+|------|------|
+| **前置条件** | T1 未被删除 |
+| **测试步骤** | ① 第 1 次 DELETE → ② 第 2 次 DELETE → ③ 第 3 次 DELETE |
+| **预期结果** | ① 第 1 次：200，DB 更新，审计日志写入 <br>② 第 2 次：200（幂等），`{ code: 0 }`，审计日志**不**重复写入 <br>③ 第 3 次：200（幂等），同上 |
+| **环境** | dev | **类型** | 集成 | **级别** | P1 |
 
-```sql
--- ============================================================
--- 测试数据初始化脚本
--- 用途：为集成测试和 E2E 测试提供前置数据
--- 前置：已执行 DDL（CREATE TABLE votes/options/user_votes）
--- 备注：team_id 统一使用 '2ed263bf32ae1655'（模拟飞书 tenant_key）
--- ============================================================
-
--- 飞书 user_id 均为 VARCHAR(64) 格式（如 ou_xxx）
-
--- ----------------------------------------------------------
--- 场景 A：进行中匿名单选投票（3 选项，5 人已投）
--- 用途：测试实时看板、提交投票、WS 同步
--- ----------------------------------------------------------
-INSERT INTO votes (id, title, creator_id, creator_name, team_id, vote_type, vote_mode, status, deadline, total_voters, created_at)
-VALUES (
-  'a0000000-0000-0000-0000-000000000001',
-  'Sprint 24 团建去哪儿？',
-  'ou_creator001',
-  '张三',
-  '2ed263bf32ae1655',
-  'single',
-  'anonymous',
-  'active',
-  NOW() + INTERVAL '30 minutes',
-  24,
-  NOW() - INTERVAL '5 minutes'
-);
-
-INSERT INTO options (id, vote_id, content, sort_order) VALUES
-  ('a0000000-0000-0000-0000-100000000001', 'a0000000-0000-0000-0000-000000000001', '杭州西湖', 0),
-  ('a0000000-0000-0000-0000-100000000002', 'a0000000-0000-0000-0000-000000000001', '苏州园林', 1),
-  ('a0000000-0000-0000-0000-100000000003', 'a0000000-0000-0000-0000-000000000001', '无锡太湖', 2);
-
--- 5 人已投票（分散在不同选项）
-INSERT INTO user_votes (id, vote_id, user_id, selected_options, created_at) VALUES
-  ('a0000000-0000-0000-0000-200000000001', 'a0000000-0000-0000-0000-000000000001', 'ou_voter001', ARRAY['a0000000-0000-0000-0000-100000000001']::uuid[], NOW() - INTERVAL '4 minutes'),
-  ('a0000000-0000-0000-0000-200000000002', 'a0000000-0000-0000-0000-000000000001', 'ou_voter002', ARRAY['a0000000-0000-0000-0000-100000000001']::uuid[], NOW() - INTERVAL '3 minutes'),
-  ('a0000000-0000-0000-0000-200000000003', 'a0000000-0000-0000-0000-000000000001', 'ou_voter003', ARRAY['a0000000-0000-0000-0000-100000000002']::uuid[], NOW() - INTERVAL '2 minutes'),
-  ('a0000000-0000-0000-0000-200000000004', 'a0000000-0000-0000-0000-000000000001', 'ou_voter004', ARRAY['a0000000-0000-0000-0000-100000000002']::uuid[], NOW() - INTERVAL '1 minute'),
-  ('a0000000-0000-0000-0000-200000000005', 'a0000000-0000-0000-0000-000000000001', 'ou_voter005', ARRAY['a0000000-0000-0000-0000-100000000003']::uuid[], NOW() - INTERVAL '30 seconds');
-
--- Redis 补充数据（初始化 tally）
--- HSET vote:a0000000-0000-0000-0000-000000000001:tally a0000000-0000-0000-0000-100000000001 2 a0000000-0000-0000-0000-100000000002 2 a0000000-0000-0000-0000-100000000003 1
--- SET vote:a0000000-0000-0000-0000-000000000001:deadline "2026-06-01T16:XX:XX" EX 1800
-
-
--- ----------------------------------------------------------
--- 场景 B：进行中实名多选投票（5 选项，3 人已投）
--- 用途：测试实名查看投票人、多选提交
--- ----------------------------------------------------------
-INSERT INTO votes (id, title, creator_id, creator_name, team_id, vote_type, vote_mode, status, deadline, total_voters, created_at)
-VALUES (
-  'b0000000-0000-0000-0000-000000000001',
-  '技术栈选型投票',
-  'ou_creator001',
-  '张三',
-  '2ed263bf32ae1655',
-  'multi',
-  'public',
-  'active',
-  NOW() + INTERVAL '1 hour',
-  24,
-  NOW() - INTERVAL '10 minutes'
-);
-
-INSERT INTO options (id, vote_id, content, sort_order) VALUES
-  ('b0000000-0000-0000-0000-100000000001', 'b0000000-0000-0000-0000-000000000001', 'React + Express', 0),
-  ('b0000000-0000-0000-0000-100000000002', 'b0000000-0000-0000-0000-000000000001', 'Vue + Koa', 1),
-  ('b0000000-0000-0000-0000-100000000003', 'b0000000-0000-0000-0000-000000000001', 'Svelte + Fastify', 2),
-  ('b0000000-0000-0000-0000-100000000004', 'b0000000-0000-0000-0000-000000000001', 'Angular + NestJS', 3),
-  ('b0000000-0000-0000-0000-100000000005', 'b0000000-0000-0000-0000-000000000001', 'Next.js + tRPC', 4);
-
--- 3 人多选投票（模拟不同选择组合）
-INSERT INTO user_votes (id, vote_id, user_id, selected_options, created_at) VALUES
-  ('b0000000-0000-0000-0000-200000000001', 'b0000000-0000-0000-0000-000000000001', 'ou_voter001',
-   ARRAY['b0000000-0000-0000-0000-100000000001','b0000000-0000-0000-0000-100000000003','b0000000-0000-0000-0000-100000000005']::uuid[], NOW() - INTERVAL '8 minutes'),
-  ('b0000000-0000-0000-0000-200000000002', 'b0000000-0000-0000-0000-000000000001', 'ou_voter002',
-   ARRAY['b0000000-0000-0000-0000-100000000001','b0000000-0000-0000-0000-100000000002']::uuid[], NOW() - INTERVAL '6 minutes'),
-  ('b0000000-0000-0000-0000-200000000003', 'b0000000-0000-0000-0000-000000000001', 'ou_voter003',
-   ARRAY['b0000000-0000-0000-0000-100000000004','b0000000-0000-0000-0000-100000000005']::uuid[], NOW() - INTERVAL '4 minutes');
-
-
--- ----------------------------------------------------------
--- 场景 C：已结束匿名投票（2 选项，全员 24 人均已投票）
--- 用途：测试最终结果页、匿名不暴露身份
--- ----------------------------------------------------------
-INSERT INTO votes (id, title, creator_id, creator_name, team_id, vote_type, vote_mode, status, deadline, total_voters, created_at, closed_at, closed_by)
-VALUES (
-  'c0000000-0000-0000-0000-000000000001',
-  '是否需要引入敏捷开发？',
-  'ou_creator001',
-  '张三',
-  '2ed263bf32ae1655',
-  'single',
-  'anonymous',
-  'closed',
-  NOW() - INTERVAL '1 hour',
-  24,
-  NOW() - INTERVAL '2 hours',
-  NOW() - INTERVAL '1 hour',
-  'manual'
-);
-
-INSERT INTO options (id, vote_id, content, sort_order) VALUES
-  ('c0000000-0000-0000-0000-100000000001', 'c0000000-0000-0000-0000-000000000001', '支持', 0),
-  ('c0000000-0000-0000-0000-100000000002', 'c0000000-0000-0000-0000-000000000001', '反对', 1);
-
--- 24 人投票：16 支持 vs 8 反对
-DO $$
-DECLARE
-  i INTEGER;
-BEGIN
-  FOR i IN 1..16 LOOP
-    INSERT INTO user_votes (id, vote_id, user_id, selected_options, created_at)
-    VALUES (gen_random_uuid(), 'c0000000-0000-0000-0000-000000000001',
-            'ou_voter_c' || LPAD(i::TEXT, 3, '0'),
-            ARRAY['c0000000-0000-0000-0000-100000000001']::uuid[],
-            NOW() - INTERVAL '90 minutes' + (i * INTERVAL '30 seconds'));
-  END LOOP;
-
-  FOR i IN 17..24 LOOP
-    INSERT INTO user_votes (id, vote_id, user_id, selected_options, created_at)
-    VALUES (gen_random_uuid(), 'c0000000-0000-0000-0000-000000000001',
-            'ou_voter_c' || LPAD(i::TEXT, 3, '0'),
-            ARRAY['c0000000-0000-0000-0000-100000000002']::uuid[],
-            NOW() - INTERVAL '90 minutes' + (i * INTERVAL '30 seconds'));
-  END LOOP;
-END $$;
-
-
--- ----------------------------------------------------------
--- 场景 D：即将到期的投票（deadline < 2min）
--- 用途：测试倒计时校准、自动结束、截止提醒
--- ----------------------------------------------------------
-INSERT INTO votes (id, title, creator_id, creator_name, team_id, vote_type, vote_mode, status, deadline, total_voters, created_at)
-VALUES (
-  'd0000000-0000-0000-0000-000000000001',
-  '即将到期的投票',
-  'ou_creator002',
-  '李四',
-  '2ed263bf32ae1655',
-  'single',
-  'anonymous',
-  'active',
-  NOW() + INTERVAL '90 seconds',   -- 90s 后到期，触发 reminder（60s）+ 自动结束
-  24,
-  NOW() - INTERVAL '5 minutes'
-);
-
-INSERT INTO options (id, vote_id, content, sort_order) VALUES
-  ('d0000000-0000-0000-0000-100000000001', 'd0000000-0000-0000-0000-000000000001', '选项 A', 0),
-  ('d0000000-0000-0000-0000-100000000002', 'd0000000-0000-0000-0000-000000000001', '选项 B', 1);
-
-
--- ----------------------------------------------------------
--- 场景 E：空白投票（0 人投票，10 选项最大值）
--- 用途：测试边界条件——0 票图表、10 选项渲染、空状态
--- ----------------------------------------------------------
-INSERT INTO votes (id, title, creator_id, creator_name, team_id, vote_type, vote_mode, status, deadline, total_voters, created_at)
-VALUES (
-  'e0000000-0000-0000-0000-000000000001',
-  '年度最受欢迎技术文章评选',
-  'ou_creator003',
-  '王五',
-  '2ed263bf32ae1655',
-  'multi',
-  'public',
-  'active',
-  NOW() + INTERVAL '2 hours',
-  24,
-  NOW()
-);
-
-INSERT INTO options (id, vote_id, content, sort_order) VALUES
-  ('e0000000-0000-0000-0000-100000000001', 'e0000000-0000-0000-0000-000000000001', '文章 A：微服务架构实践', 0),
-  ('e0000000-0000-0000-0000-100000000002', 'e0000000-0000-0000-0000-000000000001', '文章 B：前端性能优化指南', 1),
-  ('e0000000-0000-0000-0000-100000000003', 'e0000000-0000-0000-0000-000000000001', '文章 C：数据库调优实战', 2),
-  ('e0000000-0000-0000-0000-100000000004', 'e0000000-0000-0000-0000-000000000001', '文章 D：AI 在 DevOps 中的应用', 3),
-  ('e0000000-0000-0000-0000-100000000005', 'e0000000-0000-0000-0000-000000000001', '文章 E：安全攻防入门', 4),
-  ('e0000000-0000-0000-0000-100000000006', 'e0000000-0000-0000-0000-000000000001', '文章 F：云原生网络原理', 5),
-  ('e0000000-0000-0000-0000-100000000007', 'e0000000-0000-0000-0000-000000000001', '文章 G：Rust 系统编程', 6),
-  ('e0000000-0000-0000-0000-100000000008', 'e0000000-0000-0000-0000-000000000001', '文章 H：GraphQL 最佳实践', 7),
-  ('e0000000-0000-0000-0000-100000000009', 'e0000000-0000-0000-0000-000000000001', '文章 I：Serverless 架构指南', 8),
-  ('e0000000-0000-0000-0000-100000000010', 'e0000000-0000-0000-0000-000000000001', '文章 J：测试驱动开发', 9);
-```
-
-### 7.2 测试账号清单
-
-| 账号 ID | 角色 | 姓名 | team_id | 用途 |
-|---------|------|------|---------|------|
-| `ou_creator001` | 投票发起者 | 张三 | `2ed263bf32ae1655` | 创建/结束投票、查看发起者专属视图 |
-| `ou_creator002` | 投票发起者 | 李四 | `2ed263bf32ae1655` | 创建即将到期投票 |
-| `ou_creator003` | 投票发起者 | 王五 | `2ed263bf32ae1655` | 创建空投票（10 选项） |
-| `ou_voter001` ~ `ou_voter024` | 投票参与者 | Voter 001-024 | `2ed263bf32ae1655` | 模拟团队 24 人参与投票 |
-| `ou_voter_c001` ~ `ou_voter_c024` | 投票参与者 | Voter C001-C024 | `2ed263bf32ae1655` | 场景 C 已全员投票 |
-| `ou_teamB_creator` | 其他团队发起者 | 赵六 | `other_team_id` | 跨团队隔离测试 |
-
-### 7.3 Redis 预处理命令（测试辅助）
-
-```bash
-# 初始化场景 A 的 Redis tally
-redis-cli HSET vote:a0000000-0000-0000-0000-000000000001:tally \
-  a0000000-0000-0000-0000-100000000001 2 \
-  a0000000-0000-0000-0000-100000000002 2 \
-  a0000000-0000-0000-0000-100000000003 1
-
-# 初始化场景 B 的 Redis tally
-redis-cli HSET vote:b0000000-0000-0000-0000-000000000001:tally \
-  b0000000-0000-0000-0000-100000000001 2 \
-  b0000000-0000-0000-0000-100000000002 1 \
-  b0000000-0000-0000-0000-100000000003 1 \
-  b0000000-0000-0000-0000-100000000004 1 \
-  b0000000-0000-0000-0000-100000000005 2
-
-# 设置自动结束定时器（场景 D）
-redis-cli SET vote:d0000000-0000-0000-0000-000000000001:deadline "$(date -d '+90 seconds' -u +%Y-%m-%dT%H:%M:%S.000Z)" EX 90
-```
+#### TC-DEL-012：多次删除仅生成一条审计记录
+| 字段 | 内容 |
+|------|------|
+| **前置条件** | T1 已删除 |
+| **测试步骤** | ① 查询 audit_logs 表过滤 `entity_id=T1.id` |
+| **预期结果** | 仅返回 1 条 `action='DELETE_VOTE'` 记录 |
+| **环境** | dev | **类型** | 集成 | **级别** | P2 |
 
 ---
 
-## 八、测试覆盖矩阵
+## 五、前端交互测试（删除流程 UI + WS 联动）
 
-### 8.1 功能模块 × 测试层
+> 覆盖删除确认弹窗、列表页/详情页删除入口、已删除占位页、WS 实时同步。
 
-| 功能模块 | AC 覆盖 | 单元测试 | 集成测试 | WS 测试 | E2E 测试 | 性能测试 |
-|----------|---------|----------|----------|---------|----------|----------|
-| **F-001 创建投票** | AC-001-1~10 | UT-VL-01~13 | IT-CV-01~14 | — | E2E-J1~J3 | PERF-API-03 |
-| **F-002 参与投票** | AC-002-1~7 | UT-DD-01~04 | IT-SV-01~12 | WS-SYNC-01~03, WS-CONC-01~04 | E2E-J1~J2, E2E-J4 | PERF-API-04 |
-| **F-003 实时结果看板** | AC-003-1~9 | — | IT-VD-01~07 | WS-SYNC-01~04, WS-RC-01~04 | E2E-J1~J2, E2E-J4 | PERF-ECH-01~03 |
-| **F-004 手动结束** | AC-004-1~4 | UT-SM-02 | IT-CL-01~07 | WS-AE-02 | E2E-J1~J2 | — |
-| **F-005 自动结束** | AC-005-1~4 | UT-SM-03~04, UT-SM-08 | — | WS-AE-01~05 | E2E-J1, E2E-J3 | — |
-| **F-006 最终结果页** | AC-006-1~3 | — | IT-VD-05~07 | — | E2E-J1~J2 | — |
-| **F-007 投票列表** | AC-007-1~4 | — | IT-VL-01~09 | — | E2E-J1（含列表入口验证） | PERF-API-01 |
-| **F-008 隐私声明** | AC-008-1~3 | — | IT-VD-01, IT-VD-10 | — | E2E-J1 | — |
-| **乐观更新回滚** | AC-003-9 | — | IT-SV-12 | — | E2E-J4 | — |
+### 5.1 删除入口可见性（3 条）
 
-### 8.2 防刷三层 × 测试层
+#### TC-UI-001：列表页删除入口（仅创建者可见）
+| 字段 | 内容 |
+|------|------|
+| **关联 AC** | US-301 |
+| **前置条件** | 用户 A 创建 T1，用户 B 为普通成员 |
+| **测试步骤** | ① 用户 A 登录并查看列表页 → ② 用户 B 登录并查看相同列表页 |
+| **预期结果** | ① 用户 A 可看到 T1 卡片上的删除按钮（垃圾桶图标，危险色）<br>② 用户 B 看不到 T1 卡片上任何删除入口 |
+| **环境** | dev 双窗口 | **类型** | E2E | **级别** | P0 |
 
-| 防线 | 实现机制 | 单元测试 | 集成测试 | 验证方法 |
-|------|----------|----------|----------|----------|
-| **L1: 认证层** | JWT / 飞书 SSO 验签 | — | IT-CV-11（401 拒绝未认证请求） | 无 token → 401，过期 token → 401 |
-| **L2: 速率限制** | Redis Sorted Set 滑动窗口 + 降级内存 Map | UT-RL-01~05 | IT-SV-09（429 拒绝第 4 次） | Redis 正常 + 降级双路径验证 |
-| **L3: 业务校验** | status 校验 + option 归属校验 | — | IT-SV-07~08（closed → 403 / 无效 option → 400） | 状态校验 + 归属校验 |
-| **L4: 数据库防重** | PG UNIQUE(vote_id, user_id) | UT-DD-01~03 | IT-SV-06（重复 → 409） | 验证 23505 → 40901 错误码转换 |
+#### TC-UI-002：详情页删除入口（仅创建者可见）
+| 字段 | 内容 |
+|------|------|
+| **前置条件** | 用户 A 创建 T1，用户 A 和 B 分别进入详情页 |
+| **测试步骤** | ① 用户 A 在详情页查看发起者操控区 → ② 用户 B 查看同一详情页 |
+| **预期结果** | ① 用户 A 可见删除按钮（危险样式，位于「结束投票」按钮旁或下方）<br>② 用户 B 无删除按钮 |
+| **环境** | dev 双窗口 | **类型** | E2E | **级别** | P0 |
 
-### 8.3 非功能需求覆盖矩阵
+#### TC-UI-003：删除按钮危险样式验收
+| 字段 | 内容 |
+|------|------|
+| **关联 AC** | AC-309-1 |
+| **前置条件** | 用户 A 为创建者，进入列表页或详情页 |
+| **测试步骤** | ① 查看删除按钮/图标 |
+| **预期结果** | ① 按钮/图标使用危险色（红色/红色描边）<br>② hover/active 有过渡效果<br>③ 视觉上明显区别于常规操作按钮（如「结束投票」「分享」） |
+| **环境** | dev | **类型** | 单元（样式审查） | **级别** | P2 |
 
-| 非功能需求 | 测试方法 | 关键指标 | 关联测试 |
-|-----------|----------|----------|----------|
-| 页面首次加载 FCP ≤1.5s | Lighthouse / Playwright trace | FCP 时间 | E2E-J1（页面首次进入） |
-| API P99 ≤200ms | k6 / Artillery 压测 | P99 响应时间 | PERF-API-01~05 |
-| WS 推送延迟 ≤2s | WS 自定义脚本时间戳对比 | 广播延迟 | PERF-WS-02 |
-| ECharts 渲染 ≤100ms | `performance.mark` 测量 | 渲染耗时 | PERF-ECH-01~03 |
-| 200 WS 并发连接 | 多实例 socket.io-client | 连接成功率 | PERF-WS-01 |
-| Redis 降级可用性 | 手动停止 Redis → API 正常响应 | 降级后 P99 < 500ms（PG 替代 Redis） | PERF-DG-01~02 |
-| XSS 防护 | 输入 `<script>alert(1)</script>` | React JSX 转义输出 | E2E（创建/查看含 XSS payload 的标题和选项） |
-| 敏感数据匿名保护 | API 返回值审查 | 匿名模式下 voters:[] | IT-VD-01, IT-VD-07, IT-VD-10 |
-| 跨团队隔离 | team_B token 请求 team_A 数据 | 空结果或 403 | IT-VL-08, IT-VD-13, IT-CL-06 |
-| 滚动重启可用性 | `docker-compose up -d --no-deps app` | 服务中断 <5s，WS 自动重连 | WS-RC-04 |
-| PG 备份恢复 | 执行备份 → 清空 PG → 恢复 | 数据完整恢复 | 运维验证（非自动化测试） |
+### 5.2 确认弹窗测试（3 条）
 
-### 8.4 覆盖率目标总结
+#### TC-UI-004：确认弹窗显示投票标题预览
+| 字段 | 内容 |
+|------|------|
+| **关联 AC** | AC-309-2 |
+| **前置条件** | 用户 A 在列表页/详情页点击删除按钮 |
+| **测试步骤** | ① 观察确认弹窗内容 |
+| **预期结果** | 弹窗内展示该投票的完整标题，位置显眼，用户可明确识别被删目标 |
+| **环境** | dev | **类型** | E2E | **级别** | P0 |
 
-| 覆盖率维度 | 目标 | 达成方式 |
-|-----------|------|----------|
-| **PRD 验收标准 (AC)** | 33/33 = 100% | 每个 AC 至少 1 条集成测试用例 |
-| **API 端点** | 5/5 = 100% | POST create、GET list、GET detail、POST vote、POST close |
-| **API 错误码** | 所有定义的错误码全覆盖 | 40001-40005、40100、40301-40302、40400、40901-40902、42900、50000 |
-| **WS 事件** | 3/3 = 100% | vote:update、vote:closed、vote:reminder |
-| **状态机路径** | 8/8 = 100% | 正常流转 + 并发竞态 + 故障恢复 |
-| **防刷三层** | 4/4 层串联 | L1 认证 → L2 限流 → L3 业务校验 → L4 PG UNIQUE |
-| **投票模式** | 2/2 | anonymous + public |
-| **投票类型** | 2/2 | single + multi |
-| **浏览器兼容** | Chrome/Edge/Firefox/Safari | Playwright 多 browser 配置 |
+#### TC-UI-005：确认弹窗按钮样式
+| 字段 | 内容 |
+|------|------|
+| **关联 AC** | AC-309-3 |
+| **前置条件** | 确认弹窗已弹出 |
+| **测试步骤** | ① 查看「取消」按钮 → ② 查看「确认删除」按钮 |
+| **预期结果** | ① 「取消」为次级按钮（无填充/描边样式）<br>② 「确认删除」为危险按钮（红色填充或红色描边）<br>③ 两者可明确区分 |
+| **环境** | dev | **类型** | 单元（样式审查） | **级别** | P2 |
+
+#### TC-UI-006：弹窗外区域点击关闭（遮罩 + ESC）
+| 字段 | 内容 |
+|------|------|
+| **关联 AC** | AC-309-4, AC-309-5 |
+| **前置条件** | 确认弹窗已弹出 |
+| **测试步骤** | ① 点击弹窗背景遮罩 → ② 按键盘 ESC 键（桌面端） |
+| **预期结果** | ① 弹窗关闭 <br>② 不执行删除操作 <br>③ 投票状态不变 |
+| **环境** | dev | **类型** | E2E | **级别** | P1 |
+
+### 5.3 已删除状态展示（3 条）
+
+#### TC-UI-007：列表页已删除投票淡出移除动画
+| 字段 | 内容 |
+|------|------|
+| **关联 AC** | AC-303-1, AC-306-6 |
+| **前置条件** | 用户 A（创建者）在列表页，用户 B（非创建者）也在列表页 |
+| **测试步骤** | ① 用户 A 删除 T1 → ② 观察两个用户的列表页 |
+| **预期结果** | ① T1 卡片以淡出动画移除（过渡时长 ≤500ms）<br>② 移除后「进行中」和「已结束」Tab 均不再显示 T1 |
+| **环境** | dev 双窗口 | **类型** | E2E | **级别** | P0 |
+
+#### TC-UI-008：详情页「已删除」占位页
+| 字段 | 内容 |
+|------|------|
+| **关联 AC** | AC-303-2 |
+| **前置条件** | 用户 A 删除 T1；用户 B 通过 URL 进入 `/votes/:id` |
+| **测试步骤** | ① 用户 B 刷新页面 |
+| **预期结果** | ① 页面展示替换内容：🗑️（或 🖼️）图标 + 文案「该投票已被创建者删除」+ 「返回列表」按钮 |
+| **环境** | dev | **类型** | E2E | **级别** | P0 |
+
+#### TC-UI-009：已投票用户查看被删除投票
+| 字段 | 内容 |
+|------|------|
+| **关联 AC** | AC-303-3 |
+| **前置条件** | 用户 C 曾投票给 T1，T1 已被删除 |
+| **测试步骤** | ① 用户 C 通过历史链接/书签进入 `/votes/:id` |
+| **预期结果** | ① 详情页同样显示「已删除」占位页，与未投票用户一致 |
+| **环境** | dev | **类型** | E2E | **级别** | P1 |
 
 ---
 
-## 附录 A：Bug 报告模板
+## 六、级联清理验证（PG + Redis + WS 联动）
 
-```
-## Bug #[编号]
-- **发现时间**：2026-06-XX HH:MM
-- **严重程度**：P0(阻塞) / P1(严重) / P2(一般) / P3(建议)
-- **关联用例**：IT-xxx / WS-xxx / E2E-xxx
-- **环境信息**：Docker Compose，浏览器版本，Node 版本
-- **复现步骤**：
-  1.
-  2.
-  3.
-- **预期结果**：
-- **实际结果**：
-- **复现概率**：100% / 偶发(N/10)
-- **截图/日志**：
-```
+> 覆盖删除操作的全链路数据一致性。
 
-## 附录 B：测试工具版本
+### 6.1 PostgreSQL 级联（3 条）
 
-| 工具 | 版本 | 用途 |
+#### TC-CLEAN-001：PG 软删除字段完整性
+| 字段 | 内容 |
+|------|------|
+| **关联 AC** | AC-303-4 |
+| **前置条件** | 用户 A 删除 T1 |
+| **测试步骤** | ① 直接 SQL 查询 `SELECT * FROM votes WHERE id = T1.id` |
+| **预期结果** | ① `del_flag` = TRUE <br>② `deleted_at` 非空，为删除时间戳（`TIMESTAMPTZ` 类型）<br>③ `deleted_by` = 用户 A 的 UUID |
+| **环境** | dev | **类型** | 集成 | **级别** | P0 |
+
+#### TC-CLEAN-002：user_votes 数据不受删除影响
+| 字段 | 内容 |
+|------|------|
+| **前置条件** | T1 有 3 条 user_votes 记录 |
+| **测试步骤** | ① 用户 A 删除 T1 → ② 查询 `user_votes` 表 `WHERE vote_id = T1.id` |
+| **预期结果** | ① user_votes 数据完整保留（计数 = 3）<br>② 投票数据不级联丢失 |
+| **环境** | dev | **类型** | 集成 | **级别** | P1 |
+
+#### TC-CLEAN-003：options 表不受删除影响
+| 字段 | 内容 |
+|------|------|
+| **前置条件** | T1 有 4 个选项 |
+| **测试步骤** | ① 删除 T1 → ② 查询 `options` 表 `WHERE vote_id = T1.id` |
+| **预期结果** | ① 4 条选项记录完整保留 <br>② `sort_order` 字段无变化 |
+| **环境** | dev | **类型** | 集成 | **级别** | P1 |
+
+### 6.2 Redis 级联（3 条）
+
+#### TC-CLEAN-004：Redis tally hash 被删除
+| 字段 | 内容 |
+|------|------|
+| **关联 AC** | AC-301-1 |
+| **前置条件** | T1 的 tally key `vote:T1:tally` 存在于 Redis（可通过 `EXISTS` 确认） |
+| **测试步骤** | ① 删除 T1 → ② 检查 Redis `EXISTS vote:T1:tally` |
+| **预期结果** | 返回 0（key 不存在） |
+| **环境** | dev | **类型** | 集成 | **级别** | P0 |
+
+#### TC-CLEAN-005：Redis deadline key 被删除
+| 字段 | 内容 |
+|------|------|
+| **前置条件** | T1 的 deadline key `vote:T1:deadline` 存在于 Redis |
+| **测试步骤** | ① 删除 T1 → ② 检查 Redis `EXISTS vote:T1:deadline` |
+| **预期结果** | 返回 0（key 不存在） |
+| **环境** | dev | **类型** | 集成 | **级别** | P0 |
+
+#### TC-CLEAN-006：删除后不可对已删除投票再投票
+| 字段 | 内容 |
+|------|------|
+| **前置条件** | T1 已删除（del_flag=TRUE），用户 B 未投 |
+| **测试步骤** | ① 用户 B 调用 `POST /api/votes/:id/vote` |
+| **预期结果** | 返回 403，`{ code: 40305, message: '投票已被删除' }` |
+| **环境** | dev | **类型** | 集成 | **级别** | P1 |
+
+### 6.3 WS 级联（2 条）
+
+#### TC-CLEAN-007：WS 广播 deleted 事件
+| 字段 | 内容 |
+|------|------|
+| **前置条件** | 用户 A 和用户 B 同时在线（WS 日志可监控） |
+| **测试步骤** | ① 用户 A 删除 T1 → ② 监听 WS 事件 |
+| **预期结果** | ① 服务端广播 `vote:T1:deleted` 事件到 `vote:T1` 房间<br>② Payload 包含：`{ vote_id: T1.id, deleted_by: 用户A.uuid, deleted_at: timestamp }` |
+| **环境** | dev（WS 事件拦截/日志） | **类型** | 集成 | **级别** | P0 |
+
+#### TC-CLEAN-008：WS 房间清理（socketsLeave）
+| 字段 | 内容 |
+|------|------|
+| **关联 ARCH** | §5.2 |
+| **前置条件** | 用户 A 和用户 B 均 join 了 `vote:T1` 房间 |
+| **测试步骤** | ① 用户 A 删除 T1 → ② 检查房间成员 |
+| **预期结果** | ① 服务端调用 `io.in('vote:T1').socketsLeave('vote:T1')`<br>② 房间清空，后续无残留 WS 连接 |
+| **环境** | dev（WS 房间元数据检查） | **类型** | 集成 | **级别** | P1 |
+
+### 6.4 审计日志级联（2 条）
+
+#### TC-CLEAN-009：删除审计日志完整记录
+| 字段 | 内容 |
+|------|------|
+| **关联 AC** | AC-302-1 |
+| **前置条件** | 用户 A 删除 T1（携带真实 IP 和 User-Agent） |
+| **测试步骤** | ① 查询 `audit_logs` 表过滤 `action='DELETE_VOTE' AND entity_id=T1.id` |
+| **预期结果** | ① `action` = `'DELETE_VOTE'` <br>② `entity_type` = `'vote'` <br>③ `entity_id` = T1 的 UUID <br>④ `user_id` = 用户 A 的 UUID <br>⑤ `team_id` = 用户 A 的 team_id <br>⑥ `ip` 非空 <br>⑦ `user_agent` 非空 <br>⑧ `created_at` 非空 <br>⑨ `detail` 字段可选（可 null） |
+| **环境** | dev | **类型** | 集成 | **级别** | P0 |
+
+#### TC-CLEAN-010：幂等删除不重复写审计日志
+| 字段 | 内容 |
+|------|------|
+| **关联 AC** | AC-302-2 |
+| **前置条件** | T1 已删除 |
+| **测试步骤** | ① 用户 A 再次调用 DELETE（应返回幂等 200）→ ② 查询审计日志 |
+| **预期结果** | `audit_logs` 表仅 1 条 `action='DELETE_VOTE' AND entity_id=T1.id` 记录 |
+| **环境** | dev | **类型** | 集成 | **级别** | P1 |
+
+---
+
+## 七、越权测试（非创建者调用 DELETE）
+
+> 覆盖 AC-301-5 ~ AC-301-8，扩展攻击向量。
+
+### 7.1 鉴权校验（4 条）
+
+#### TC-AUTH-001：非创建者调用 DELETE（同团队）
+| 字段 | 内容 |
+|------|------|
+| **关联 AC** | AC-301-6 |
+| **前置条件** | 用户 B 与用户 A 同团队，非 T1 创建者 |
+| **测试步骤** | ① 用户 B 携带自己 JWT 调用 `DELETE /api/votes/:id`（T1） |
+| **预期结果** | 返回 HTTP 403，`{ code: 40303, message: '仅投票创建者可删除' }` |
+| **环境** | dev | **类型** | 集成 | **级别** | P0 |
+
+#### TC-AUTH-002：跨团队用户调用 DELETE
+| 字段 | 内容 |
+|------|------|
+| **前置条件** | 用户 C（team_id=2）与用户 A（team_id=1）不同团队 |
+| **测试步骤** | ① 用户 C 携带 JWT 调用 `DELETE /api/votes/:id`（T1，team_id=1） |
+| **预期结果** | 返回 HTTP 403，`{ code: 40304, message: '无权删除此投票' }` |
+| **环境** | dev（双 team 数据） | **类型** | 集成 | **级别** | P0 |
+
+#### TC-AUTH-003：未登录（无 JWT）调用 DELETE
+| 字段 | 内容 |
+|------|------|
+| **前置条件** | 请求头无 `Authorization` |
+| **测试步骤** | ① 调用 `DELETE /api/votes/:id`（无 token） |
+| **预期结果** | 返回 HTTP 401，`{ code: 40100, message: '未登录或登录已过期' }` |
+| **环境** | dev | **类型** | 集成 | **级别** | P0 |
+
+#### TC-AUTH-004：无效 JWT 调用 DELETE
+| 字段 | 内容 |
+|------|------|
+| **前置条件** | JWT 被篡改/过期 |
+| **测试步骤** | ① 携带伪造 JWT 调用 `DELETE /api/votes/:id` |
+| **预期结果** | 返回 HTTP 401，鉴权中间件拦截 |
+| **环境** | dev | **类型** | 集成 | **级别** | P0 |
+
+### 7.2 前端入口校验（1 条）
+
+#### TC-AUTH-005：前端隐藏入口不替代后端鉴权
+| 字段 | 内容 |
+|------|------|
+| **前置条件** | 删除按钮在前端对非创建者隐藏（仅 UI 约束） |
+| **测试步骤** | ① 用户 B 使用浏览器 DevTools 手动构造 DELETE 请求（模拟前端强制调用） |
+| **预期结果** | ① 后端依然返回 403（前端隐藏按钮不替代后端鉴权）<br>② 审计日志不记录此次越权尝试（正常） |
+| **环境** | dev | **类型** | 集成 | **级别** | P0 |
+
+### 7.3 相关接口越权（3 条）
+
+#### TC-AUTH-006：非创建者调用 closeVote 对已删除投票
+| 字段 | 内容 |
+|------|------|
+| **前置条件** | T1 已删除 |
+| **测试步骤** | ① 用户 B 调用 `POST /api/votes/:id/close` |
+| **预期结果** | 返回 404（投票已删除，不可操作） |
+| **环境** | dev | **类型** | 集成 | **级别** | P1 |
+
+#### TC-AUTH-007：GET 详情页对已删除投票返回 deleted 状态
+| 字段 | 内容 |
+|------|------|
+| **前置条件** | T1 已删除 |
+| **测试步骤** | ① 用户 B 调用 `GET /api/votes/:id` |
+| **预期结果** | 返回 `{ code: 0, deleted: true, deleted_at, deleted_by, title }`（前端用于展示「已删除」占位页，不回投票选项/计票数据，保留 title 等基础字段用于页面标题展示） |
+| **环境** | dev | **类型** | 集成 | **级别** | P0 |
+
+#### TC-AUTH-008：GET 列表已过滤已删除投票
+| 字段 | 内容 |
+|------|------|
+| **前置条件** | 团队内有 T1（已删除）、T2（active） |
+| **测试步骤** | ① 调用 `GET /api/votes?status=active`（不加 `include_deleted`） |
+| **预期结果** | ① 列表仅返回 T2，已删除的 T1 不在列表中<br>② 总计数不计入已删除投票 |
+| **环境** | dev | **类型** | 集成 | **级别** | P0 |
+
+---
+
+## 八、前端美工验收测试（M2-UI 一致性）
+
+> 覆盖 F-304 ~ F-309，逐项检查 UI 组件与设计约束。
+
+### 8.1 全局色彩系统（2 条）
+
+#### TC-M2-001：CSS 变量体系完整性
+| 字段 | 内容 |
+|------|------|
+| **关联 AC** | AC-304-1 |
+| **测试步骤** | ① 检查 `:root`（`index.css`）中定义的 CSS 变量 |
+| **预期结果** | 至少包含：`--color-primary`, `--color-primary-hover`, `--color-success`, `--color-warning`, `--color-danger`, `--color-danger-hover`, `--color-disabled`, `--color-bg`, `--color-bg-card`, `--color-text`, `--color-text-secondary`, `--color-border` |
+| **类型** | 单元（样式审查） | **级别** | P1 |
+
+#### TC-M2-002：无硬编码颜色值
+| 字段 | 内容 |
+|------|------|
+| **关联 AC** | AC-304-2 |
+| **测试步骤** | ① 逐页面截图对比，检查组件的颜色引用方式 |
+| **预期结果** | ① 所有组件通过 `var(--xxx)` 引用变量 <br>② 无遗留硬编码颜色值（`#xxx` 或 `rgb(x,x,x)`） |
+| **类型** | 单元（样式审查） | **级别** | P1 |
+
+### 8.2 实时计票 UI 重点（8 条）
+
+#### TC-M2-003：实时结果卡片容器
+| 字段 | 内容 |
+|------|------|
+| **关联 AC** | AC-305-1 |
+| **前置条件** | 投票详情页（进行中） |
+| **测试步骤** | ① 查看实时结果区域 |
+| **预期结果** | ① 结果区域包裹在独立卡片内 <br>② 圆角 12px、有背景色/阴影/16px 内边距 <br>③ 卡片顶部有「实时结果」标题和更新时间戳「刚刚更新」 |
+| **环境** | dev | **类型** | E2E | **级别** | P1 |
+
+#### TC-M2-004：票数数字过渡动效
+| 字段 | 内容 |
+|------|------|
+| **关联 AC** | AC-305-2 |
+| **前置条件** | A 选项当前 3 票 |
+| **测试步骤** | ① 另一用户给 A 投票 → ② 观察本端 A 选项的数字变化 |
+| **预期结果** | ① 数字从 3 → 4 时有过渡动效（数字滚动或 fade-in），而非直接跳变 <br>② 过渡时长 ≤500ms |
+| **环境** | dev 双窗口 | **类型** | E2E | **级别** | P1 |
+
+#### TC-M2-005：选项卡片脉冲高亮
+| 字段 | 内容 |
+|------|------|
+| **关联 AC** | AC-305-3 |
+| **前置条件** | A 选项当前 3 票 |
+| **测试步骤** | ① 另一用户给 A 投票 → ② 观察本端 A 选项卡片 |
+| **预期结果** | ① A 选项容器有短暂脉冲高亮效果（250ms 淡入 + 250ms 淡出）<br>② 高亮持续时间在 200-500ms 范围内 |
+| **环境** | dev 双窗口 | **类型** | E2E | **级别** | P1 |
+
+#### TC-M2-006：柱状图宽度过渡
+| 字段 | 内容 |
+|------|------|
+| **关联 AC** | AC-305-4 |
+| **前置条件** | A 选项柱子宽度当前 30% |
+| **测试步骤** | ① 另一用户给 A 投票 → ② 观察柱子宽度变化 |
+| **预期结果** | ① 柱子宽度以 300ms ease-out（或 cubicOut）过渡到新宽度 <br>② 非跳变，动画平滑 |
+| **环境** | dev 双窗口 | **类型** | E2E | **级别** | P1 |
+
+#### TC-M2-007：进度条渐变+圆角
+| 字段 | 内容 |
+|------|------|
+| **关联 AC** | AC-305-5 |
+| **前置条件** | 投票详情页（任意状态） |
+| **测试步骤** | ① 查看已投/总人数进度条 |
+| **预期结果** | ① 进度条两端圆角 <br>② 填充色为渐变（品牌色渐变）<br>③ 含百分比或数字显示 |
+| **环境** | dev | **类型** | 单元（样式审查） | **级别** | P1 |
+
+#### TC-M2-008：本端已选项区分色
+| 字段 | 内容 |
+|------|------|
+| **关联 AC** | AC-305-6 |
+| **前置条件** | 用户已投票给 A 选项 |
+| **测试步骤** | ① 查看实时结果中 A 选项的显示 |
+| **预期结果** | ① A 选项柱状图/选项卡片色调与未选选项有可辨识的区分（如品牌色加深或边框高亮） |
+| **环境** | dev | **类型** | E2E | **级别** | P1 |
+
+#### TC-M2-009：0 票选项显示
+| 字段 | 内容 |
+|------|------|
+| **关联 AC** | AC-305-7 |
+| **前置条件** | 投票刚创建，无人投票 |
+| **测试步骤** | ① 查看详情页实时结果 |
+| **预期结果** | ① 0 票选项不显示错误 UI <br>② 柱状图显示最小占位宽度 <br>③ 数字显示 0，非空 |
+| **环境** | dev | **类型** | E2E | **级别** | P2 |
+
+#### TC-M2-010：全票后的实时结果
+| 字段 | 内容 |
+|------|------|
+| **关联 AC** | AC-305-8 |
+| **前置条件** | 投票已结束或全部投票完成 |
+| **测试步骤** | ① 查看详情页最终结果 |
+| **预期结果** | ① 各选项票数总和 = 总投票人数 <br>② 数据无异常（负数、NaN、超过总数的票数） |
+| **环境** | dev | **类型** | 集成 | **级别** | P1 |
+
+### 8.3 全局动效和过渡（6 条）
+
+#### TC-M2-011：卡片阴影/圆角统一
+| 字段 | 内容 |
+|------|------|
+| **关联 AC** | AC-306-1 |
+| **测试步骤** | ① 截取列表页卡片和详情页卡片组件，对比样式 |
+| **预期结果** | ① 所有卡片元素圆角一致（8px 或 12px）<br>② 阴影强度一致（box-shadow 值统一） |
+| **环境** | dev | **类型** | 单元（样式审查） | **级别** | P2 |
+
+#### TC-M2-012：状态指示点脉冲动效
+| 字段 | 内容 |
+|------|------|
+| **关联 AC** | AC-306-2 |
+| **前置条件** | 列表页有进行中投票 |
+| **测试步骤** | ① 查看进行中投票卡片的状态指示点 |
+| **预期结果** | ① 绿色状态点有脉冲动效（呼吸灯效果） |
+| **环境** | dev | **类型** | E2E | **级别** | P2 |
+
+#### TC-M2-013：按钮状态切换过渡
+| 字段 | 内容 |
+|------|------|
+| **关联 AC** | AC-306-3 |
+| **测试步骤** | ① 依次 hover/active/disabled 各类按钮 |
+| **预期结果** | ① 颜色/背景色变化带 ≥200ms 过渡动画 <br>② 非瞬间切换 |
+| **环境** | dev | **类型** | 单元（样式审查） | **级别** | P2 |
+
+#### TC-M2-014：页面/组件出场过渡
+| 字段 | 内容 |
+|------|------|
+| **关联 AC** | AC-306-4 |
+| **测试步骤** | ① 切换 Tab 或进入页面 |
+| **预期结果** | ① 列表元素出现带 fade-in 动效（200-300ms） |
+| **环境** | dev | **类型** | E2E | **级别** | P2 |
+
+#### TC-M2-015：动画时长 ≤500ms
+| 字段 | 内容 |
+|------|------|
+| **关联 AC** | AC-306-5 |
+| **测试步骤** | ① 检查所有 CSS animation/transition 中的时长定义 |
+| **预期结果** | ① 所有动画时长 ≤500ms（不含状态指示点脉冲在内的循环动画） |
+| **类型** | 单元（样式审查） | **级别** | P1 |
+
+#### TC-M2-016：禁止循环动画
+| 字段 | 内容 |
+|------|------|
+| **关联 AC** | AC-306-6 |
+| **测试步骤** | ① 检查 CSS 中 `animation-iteration-count: infinite` 的使用位置 |
+| **预期结果** | ① 仅状态指示点脉冲动效可使用无限循环 <br>② 其他动画均不可使用无限循环 |
+| **类型** | 单元（样式审查） | **级别** | P1 |
+
+### 8.4 空状态/异常状态 UI（4 条）
+
+#### TC-M2-017：列表页空状态
+| 字段 | 内容 |
+|------|------|
+| **关联 AC** | AC-307-1 |
+| **前置条件** | 团队内无任何投票（清空后） |
+| **测试步骤** | ① 打开列表页 |
+| **预期结果** | ① 显示空状态插画/图标 + 文案「暂无投票，创建一个吧」+ 创建投票 CTA 按钮<br>② 样式统一 |
+| **环境** | dev | **类型** | E2E | **级别** | P2 |
+
+#### TC-M2-018：加载中骨架屏
+| 字段 | 内容 |
+|------|------|
+| **关联 AC** | AC-307-2 |
+| **前置条件** | 网络慢或数据请求中 |
+| **测试步骤** | ① 刷新页面（或限速模拟） |
+| **预期结果** | ① 卡片骨架屏展示（至少 2 个骨架元素）<br>② 灰白色闪烁动画 |
+| **环境** | dev（DevTools 限速） | **类型** | E2E | **级别** | P2 |
+
+#### TC-M2-019：网络错误状态
+| 字段 | 内容 |
+|------|------|
+| **关联 AC** | AC-307-3 |
+| **前置条件** | 后端不可用（`docker stop app`） |
+| **测试步骤** | ① 前端刷新页面 → ② 触发 API 请求 |
+| **预期结果** | ① 显示错误提示（非白屏）<br>② 包含重试按钮 |
+| **环境** | dev（手动停止 app） | **类型** | E2E | **级别** | P1 |
+
+#### TC-M2-020：API 提示风格统一
+| 字段 | 内容 |
+|------|------|
+| **关联 AC** | AC-307-4 |
+| **测试步骤** | ① 触发各类提示（成功/错误/警告/信息） |
+| **预期结果** | ① 颜色统一：成功=绿色，错误=红色，警告=黄色，信息=蓝色<br>② 位置一致（顶部居中或右下角） |
+| **环境** | dev | **类型** | E2E | **级别** | P2 |
+
+### 8.5 移动端适配（4 条）
+
+#### TC-M2-021：320px 宽度下布局不溢出
+| 字段 | 内容 |
+|------|------|
+| **关联 AC** | AC-308-1 |
+| **测试步骤** | ① 浏览器 DevTools 模拟手机视口 320px → ② 打开所有 4 个页面 |
+| **预期结果** | ① 无水平滚动条 <br>② 所有元素在 320px 内可见 <br>③ 文本无截断溢出 |
+| **环境** | dev（Chrome DevTools） | **类型** | E2E | **级别** | P1 |
+
+#### TC-M2-022：414px 宽度下布局合理
+| 字段 | 内容 |
+|------|------|
+| **关联 AC** | AC-308-2 |
+| **测试步骤** | ① 模拟手机视口 414px → ② 打开所有 4 个页面 |
+| **预期结果** | ① 合理利用空间<br>② 元素未过度放大或间距异常 |
+| **环境** | dev（Chrome DevTools） | **类型** | E2E | **级别** | P2 |
+
+#### TC-M2-023：点击目标 ≥44px
+| 字段 | 内容 |
+|------|------|
+| **关联 AC** | AC-308-3 |
+| **测试步骤** | ① 检查所有可点击元素（按钮/选项/卡片）的最小尺寸 |
+| **预期结果** | ① 最小点击区域 44×44px（符合 WCAG 标准） |
+| **环境** | dev | **类型** | 单元（样式审查） | **级别** | P2 |
+
+#### TC-M2-024：表单控件在移动端可用
+| 字段 | 内容 |
+|------|------|
+| **关联 AC** | AC-308-4 |
+| **测试步骤** | ① 在移动端视口下进入创建页 → ② 填写并提交 |
+| **预期结果** | ① 输入框弹出正确键盘类型 <br>② 下拉/步进器可正常操作 |
+| **环境** | dev（Chrome DevTools） | **类型** | E2E | **级别** | P2 |
+
+### 8.6 删除弹窗美化验收（2 条）
+
+#### TC-M2-025：确认弹窗样式验收
+| 字段 | 内容 |
+|------|------|
+| **关联 AC** | AC-309-2 / AC-309-3 |
+| **前置条件** | 创建者在列表页点击删除按钮 |
+| **测试步骤** | ① 观察弹窗样式 |
+| **预期结果** | ① 弹窗包含对话标题「确认删除投票」<br>② 展示投票完整标题预览<br>③ 「取消」= 次级按钮，「确认删除」= 危险按钮（红色）<br>④ 背景遮罩半透明，可点击外部关闭 |
+| **环境** | dev | **类型** | E2E | **级别** | P1 |
+
+#### TC-M2-026：删除按钮动效
+| 字段 | 内容 |
+|------|------|
+| **关联 AC** | AC-309-1, U-09 |
+| **前置条件** | 创建者进入列表页/详情页 |
+| **测试步骤** | ① hover 删除按钮 → ② 点击 → ③ 查看交互反馈 |
+| **预期结果** | ① hover 时按钮颜色渐变过渡（200-300ms）<br>② 点击删除按钮后触发确认弹窗，弹窗有 fade-in 动效<br>③ 删除成功后 toast「投票已删除」<br>④ 列表页卡片淡出移除（≤500ms） |
+| **环境** | dev | **类型** | E2E | **级别** | P1 |
+
+---
+
+## 九、安全审查测试
+
+> 覆盖架构文档 §9 安全设计全部要求，以及 PRD §8.2 安全维度。
+
+### 9.1 认证与授权（4 条）
+
+#### TC-SEC-001：双重鉴权覆盖（creator_id + team_id）
+| 字段 | 内容 |
+|------|------|
+| **关联条件** | 架构 §9.1.2：DELETE API 须同时校验 creator_id 和 team_id |
+| **测试步骤** | ① 用户 A（team=1）是 T1 创建者<br>② 同团队非创建者用户 B 调用 DELETE → 返回 403<br>③ 跨团队用户 C 调用 DELETE → 返回 403 |
+| **预期结果** | ① 双重校验均强制执行 <br>② 任一校验不通过即 403，不可绕过 |
+| **类型** | 集成 | **级别** | P0 |
+
+#### TC-SEC-002：DELETE API 防 CSRF
+| 字段 | 内容 |
+|------|------|
+| **关联条件** | PRD §8.2：DELETE API 需要有效 JWT token |
+| **测试步骤** | ① 不带 `Authorization` header 调用 DELETE → ② 带空 token 调用 |
+| **预期结果** | ① 401 未登录 <br>② 401 token 无效 |
+| **类型** | 集成 | **级别** | P0 |
+
+#### TC-SEC-003：closeVote 操作前置校验增强
+| 字段 | 内容 |
+|------|------|
+| **关联条件** | ARCH §9.1.2：closeVote 添加 del_flag=FALSE 前置检查 |
+| **测试步骤** | ① 删除 T1（del_flag=TRUE）→ ② 创建者调用 `POST /api/votes/:id/close` |
+| **预期结果** | 返回 404（因投票已删除，不允许操作） |
+| **类型** | 集成 | **级别** | P1 |
+
+#### TC-SEC-004：vote 前置校验增强
+| 字段 | 内容 |
+|------|------|
+| **关联条件** | BUG-008 修复 + PRD 10.2：已删除投票不可投票 |
+| **测试步骤** | ① 删除 T1 → ② 任意用户调用 `POST /api/votes/:id/vote` |
+| **预期结果** | 返回 403，`{ code: 40305, message: '投票已被删除' }` |
+| **类型** | 集成 | **级别** | P0 |
+
+### 9.2 数据安全（2 条）
+
+#### TC-SEC-005：软删除数据不可恢复性（前端不可访问）
+| 字段 | 内容 |
+|------|------|
+| **测试步骤** | ① 用户 A 删除 T1 → ② 直接 URL 访问 `/votes/:id`（T1） |
+| **预期结果** | ① 前端显示「已删除」占位页 <br>② 不暴露投票详情/计票数据 <br>③ API 层 `GET /api/votes/:id` 返回 `{ code ≠ 0 }`，不返回正常投票数据 |
+| **类型** | 集成 | **级别** | P0 |
+
+#### TC-SEC-006：审计日志不可篡改性
+| 字段 | 内容 |
+|------|------|
+| **关联条件** | ARCH §9.3.1：审计日志仅 INSERT，无 UPDATE/DELETE 权限 |
+| **测试步骤** | ① 确认 audit_logs 表无 UPDATE/DELETE 权限给应用层数据库用户 |
+| **预期结果** | ① 应用层 DB user 仅可 INSERT audit_logs <br>② 无法 UPDATE 或 DELETE 已有记录 |
+| **类型** | 单元（DB 权限检查） | **级别** | P2 |
+
+### 9.3 防注入（2 条）
+
+#### TC-SEC-007：DELETE 路径参数防注入
+| 字段 | 内容 |
+|------|------|
+| **测试步骤** | ① 调用 `DELETE /api/votes/" OR 1=1--`、`DELETE /api/votes/'; DROP TABLE votes;--` |
+| **预期结果** | ① 参数化查询拦截：返回 404（vote ID 无效）<br>② 不改变数据库 |
+| **类型** | 集成 | **级别** | P0 |
+
+#### TC-SEC-008：审计日志字段防注入
+| 字段 | 内容 |
+|------|------|
+| **测试步骤** | ① 修改 User-Agent 为 `<script>alert('xss')</script>` → ② 执行删除 → ③ 检查 audit_logs 表 |
+| **预期结果** | ① user_agent 字段正确存储了原始字符串 <br>② 无 XSS/SQL 注入风险 <br>③ 审计日志数据不作为 HTML 渲染（前端不可见） |
+| **类型** | 集成 | **级别** | P1 |
+
+---
+
+## 十、WebSocket 专项测试
+
+> 覆盖 WS 连接/重连/事件广播场景。
+
+#### TC-WS-001：WS 建立连接后 join vote 房间
+| 字段 | 内容 |
+|------|------|
+| **前置条件** | 用户 A 打开列表页 |
+| **测试步骤** | ① 检查 WS 连接状态 → ② 点击进入 T1 详情页 |
+| **预期结果** | ① WS 正常建立（HTTP 101）<br>② 自动 join `vote:T1` 房间 |
+| **类型** | 集成 | **级别** | P1 |
+
+#### TC-WS-002：WS 断线重连后事件同步
+| 字段 | 内容 |
+|------|------|
+| **前置条件** | 用户 A 在 T1 详情页，WS 连接 |
+| **测试步骤** | ① 手动断开 WS（停止 app）→ ② 重新连接 → ③ 查询当前状态 |
+| **预期结果** | ① 重连后自动重新 join 房间 <br>② 如果 T1 在断开期间被删除，重连后 API 调用返回 deleted 状态 |
+| **类型** | 集成 | **级别** | P1 |
+
+#### TC-WS-003：多实例 WS 广播一致性
+| 字段 | 内容 |
+|------|------|
+| **前置条件** | 双 Express 实例 + Redis Pub/Sub（多实例部署） |
+| **测试步骤** | ① 用户 A 在实例 1 上执行删除 T1 → ② 用户 B 在实例 2 上监听 |
+| **预期结果** | ① 用户 B 收到 `vote:T1:deleted` 事件（通过 Redis Adapter 跨实例广播）<br>② WS 事件在 < 2s 内送达 |
+| **类型** | 集成 | **级别** | P1 |
+
+---
+
+## 十一、回归测试范围
+
+| 回归项 | 覆盖详情 | 负责人 | 状态 |
+|--------|---------|--------|------|
+| 创建投票 | 正常创建、输入校验、幂等（F-301 基线） | 寻错 | ⏳ |
+| 提交投票 | 单/多选、防重、匿名/实名（F-203 基线） | 寻错 | ⏳ |
+| 结束投票 | 手动/自动结束、WS 广播（F-201 基线） | 寻错 | ⏳ |
+| 投票列表 | 分页、状态筛选（F-102 基线） | 寻错 | ⏳ |
+| 实时计票 | WS 更新、乐观更新（F-103 基线） | 寻错 | ⏳ |
+| v2 P0 复测 | BUG-007 幂等、BUG-008 竞态、竞态不再触发 | 寻错 | ⏳ |
+| 数据库迁移 | up/down 完整性 + 回滚后重新迁移 | 寻错 | ⏳ |
+| 强制场景 | 4 类强制场景全部通过 | 寻错 | ⏳ |
+
+---
+
+## 十二、测试环境与数据准备
+
+### 12.1 环境矩阵
+
+| 环境 | 用途 | 部署方式 | 数据状态 |
+|------|------|---------|---------|
+| **dev（主测试）** | 功能测试、UI 验收 | `docker-compose up -d` 本地 | 每次测试前清空重建 |
+| **staging** | E2E 全链路验收 | docker-compose（与生产同配） | 模拟真实数据 |
+| **prod** | 仅回归冒烟 | 生产环境（后端数据只读） | 不写入测试数据 |
+
+### 12.2 数据准备清单
+
+| 数据项 | 数量 | 说明 |
+|--------|------|------|
+| 团队 | 2 (team_id=1, team_id=2) | 跨团队越权测试 |
+| 用户 | 4 (A=creator, B=同团队, C=跨团队, D=未投票) | 不同角色覆盖 |
+| 投票(active) | 3 | 含不同选项数（2/5/10） |
+| 投票(closed) | 2 | 手动结束 1 + 自动结束 1 |
+| user_votes 记录 | 每投票至少 3 条 | 验证级联清理不丢数据 |
+| 已删除投票 | 1 | 幂等测试用 |
+
+### 12.3 测试工具
+
+| 工具 | 用途 |
+|------|------|
+| **curl / Postman** | API 端点手动测试 |
+| **redis-cli** | 直接查询 Redis key 状态 |
+| **psql / pgadmin** | 直接查询 PG 数据库 |
+| **Chrome DevTools** | 移动端模拟、网络模拟、WS 事件监控 |
+| **Docker logs** | 检查后端日志（Redis 降级日志、错误日志） |
+
+---
+
+## 十三、缺陷严重度定义
+
+| 严重度 | 定义 | 响应 SLA |
+|--------|------|---------|
+| **P0-阻断** | 核心功能不可用 / 数据丢失 / 安全漏洞（如越权可删除他人投票） | 修复前禁止发布，1h 内启动修复 |
+| **P1-严重** | 主要功能异常 / 有 workaround（如删除后 WS 推送延迟超过 2s） | 发布前必须修复，4h 内响应 |
+| **P2-一般** | 非核心功能异常 / UI 瑕疵（如动画时长偏差） | 本迭代内修复 |
+| **P3-建议** | 优化建议 / 非关键变更 | 记录 backlog |
+
+### 缺陷流转规则
+
+| 阶段 | 操作 | 角色 |
 |------|------|------|
-| Vitest | 1.x | 单元/集成测试 |
-| supertest | 6.x | HTTP 断言 |
-| Playwright | 1.40+ | E2E 浏览器测试 |
-| k6 | 0.48+ | 性能压测 |
-| testcontainers (Node) | 10.x | PG/Redis 集成测试容器 |
-| socket.io-client | 4.x | WS 测试客户端 |
+| 发现 | 提交 Bug 报告至 EeiMoo（含严重等级/复现步骤/预期/实际） | 寻错 |
+| 判定 | EeiMoo 判定 Bug 归属并转发开发 | EeiMoo |
+| 修复 | 开发修复后通知寻错回归验证 | 凌霜/流光 |
+| 回归 | 验证通过 → 关闭；未通过 → 补充失败信息重新循环 | 寻错 |
+| 关闭 | 全量回归无残留 P0/P1 | 寻错 |
 
 ---
 
-> 📋 **文档版本**：v1.1 | 撰写人：寻错 🔍 | 待 EeiMoo 评审
+## 十四、退出标准
+
+- [ ] 无 P0 未修复缺陷
+- [ ] 无 P1 未修复缺陷（或有 EeiMoo 批准的 waiver）
+- [ ] 金字塔比例偏差 ≤ 5%（单元 35%，集成 48%，E2E 17%）
+- [ ] 强制场景 4/4 通过
+- [ ] AC-301-1 ~ AC-309-5 全部覆盖且通过
+- [ ] 回归测试 100% 通过
+- [ ] 无 PRD §3.4「禁止项」违规（第三方 UI 库/新增页面/新增交互等）
+
+---
+
+## 附录：测试用例索引
+
+| 分类 | 起止编号 | 数量 | 优先级 |
+|------|---------|------|--------|
+| 删除功能 | TC-DEL-001 ~ TC-DEL-012 | 12 | 4×P0, 6×P1, 2×P2 |
+| 前端交互 | TC-UI-001 ~ TC-UI-009 | 9 | 4×P0, 2×P1, 3×P2 |
+| 级联清理 | TC-CLEAN-001 ~ TC-CLEAN-010 | 10 | 4×P0, 5×P1, 1×P2 |
+| 越权测试 | TC-AUTH-001 ~ TC-AUTH-008 | 8 | 6×P0, 2×P1 |
+| 前端美化 | TC-M2-001 ~ TC-M2-026 | 26 | 0×P0, 12×P1, 14×P2 |
+| 安全审查 | TC-SEC-001 ~ TC-SEC-008 | 8 | 5×P0, 2×P1, 1×P2 |
+| WS 专项 | TC-WS-001 ~ TC-WS-003 | 3 | 0×P0, 3×P1 |
+| **合计** | | **76** | **23×P0, 32×P1, 21×P2** |
+
+> 📋 **测试计划 v3 完成** | 撰写人：寻错 🔍 | 日期：2026-06-03
+> 
+> **结论摘要**：76 条测试用例覆盖六大领域。P0/P1 占比 72%（55/76）。删除功能、越权防护、级联清理为 P0 密集区。前端美化 26 条以 P1/P2 为主，无 P0 阻断项。退出标准严格：0 个 P0/P1 未修复 + 强制场景 4/4 + 回归 100%。

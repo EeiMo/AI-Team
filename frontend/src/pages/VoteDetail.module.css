@@ -1,4 +1,4 @@
-/* VoteDetail.module.css — 投票详情页样式 */
+/* VoteDetail.module.css — 投票详情页样式（v3 美工优化） */
 
 .page {
   max-width: 640px;
@@ -7,46 +7,173 @@
   min-height: 100vh;
 }
 
-.loading {
-  text-align: center;
-  padding: 48px 0;
-  font-size: 15px;
-  color: #999;
+/* ---- 加载态骨架屏 ---- */
+.skeletonPage {
+  padding-top: 24px;
 }
 
+.skeletonHeader {
+  margin-bottom: 24px;
+}
+
+.skeletonTitle {
+  width: 70%;
+  height: 24px;
+  background: var(--color-border);
+  border-radius: 4px;
+  margin-bottom: 12px;
+  animation: shimmer 1.5s infinite;
+}
+
+.skeletonLine {
+  width: 50%;
+  height: 14px;
+  background: var(--color-border);
+  border-radius: 4px;
+  margin-bottom: 8px;
+  animation: shimmer 1.5s infinite;
+  animation-delay: 0.1s;
+}
+
+.skeletonLineShort {
+  width: 30%;
+  height: 14px;
+  background: var(--color-border);
+  border-radius: 4px;
+  animation: shimmer 1.5s infinite;
+  animation-delay: 0.2s;
+}
+
+.skeletonCard {
+  background: var(--color-bg-card);
+  border-radius: var(--radius-xl);
+  padding: 16px;
+  box-shadow: var(--shadow-sm);
+}
+
+.skeletonOption {
+  height: 48px;
+  background: var(--color-bg-tag);
+  border-radius: var(--radius-md);
+  margin-bottom: 10px;
+  animation: shimmer 1.5s infinite;
+}
+
+.skeletonOption:last-child {
+  margin-bottom: 0;
+}
+
+/* ---- 错误态 ---- */
 .error {
   text-align: center;
-  padding: 48px 24px;
-  color: #ff3b30;
+  padding: 64px 24px;
+  color: var(--color-danger);
   font-size: 14px;
 }
 
+.errorIcon {
+  font-size: 48px;
+  margin-bottom: 12px;
+  opacity: 0.6;
+}
+
 .error p {
-  margin: 0 0 16px;
+  margin: 0 0 20px;
 }
 
-/* 顶部 */
-.header {
+/* ---- 已删除占位页 (F-303) ---- */
+.deletedPlaceholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 60vh;
+  text-align: center;
+  padding: 48px 24px;
+  animation: fadeIn var(--transition-slow) ease both;
+}
+
+.deletedIcon {
+  font-size: 64px;
   margin-bottom: 20px;
+  opacity: 0.7;
 }
 
-.backBtn {
+.deletedTitle {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--color-text);
+  margin: 0 0 12px;
+}
+
+.deletedHint {
+  font-size: 14px;
+  color: var(--color-text-secondary);
+  line-height: 1.6;
+  margin: 0 0 32px;
+  max-width: 320px;
+}
+
+.backToListBtn {
+  padding: 12px 32px;
+  font-size: 15px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--color-primary);
+  border: none;
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  min-height: 44px;
+  transition:
+    background var(--transition-fast),
+    transform var(--transition-fast);
+}
+
+.backToListBtn:hover {
+  background: var(--color-primary-hover);
+  transform: translateY(-1px);
+}
+
+/* ---- 顶部信息栏卡片 (U-07) ---- */
+.headerCard {
+  background: var(--color-bg-card);
+  border-radius: var(--radius-xl);
+  padding: 16px;
+  margin-bottom: 16px;
+  box-shadow: var(--shadow-sm);
+  border: 1px solid transparent;
+  transition: box-shadow var(--transition-base);
+  animation: fadeIn var(--transition-slow) ease both;
+}
+
+.headerCard:hover {
+  box-shadow: var(--shadow-md);
+}
+
+.backBtnCompact {
   padding: 4px 0;
   font-size: 15px;
-  color: #3370FF;
+  color: var(--color-primary);
   background: none;
   border: none;
   cursor: pointer;
   margin-bottom: 12px;
   display: inline-block;
+  min-height: 44px;
+  transition: opacity var(--transition-fast);
+}
+
+.backBtnCompact:hover {
+  opacity: 0.8;
 }
 
 .heading {
   font-size: 20px;
   font-weight: 700;
-  color: #1d1d1f;
-  margin: 0 0 10px;
+  color: var(--color-text);
+  margin: 0 0 12px;
   line-height: 1.4;
+  letter-spacing: -0.3px;
 }
 
 .meta {
@@ -61,8 +188,8 @@
   display: inline-block;
   padding: 2px 8px;
   font-size: 12px;
-  color: #666;
-  background: #f2f3f5;
+  color: var(--color-text-secondary);
+  background: var(--color-bg-tag);
   border-radius: 4px;
 }
 
@@ -70,19 +197,44 @@
   display: inline-block;
   padding: 2px 10px;
   font-size: 13px;
-  color: #999;
-  background: #e5e6eb;
+  color: var(--color-text-tertiary);
+  background: var(--color-border);
   border-radius: 4px;
 }
 
 .progressRow {
   display: flex;
   align-items: center;
+  gap: 10px;
+}
+
+.progressBarCompact {
+  flex: 1;
+  height: 6px;
+  background: var(--color-bg-tag);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.progressFillCompact {
+  height: 100%;
+  border-radius: 3px;
+  transition: width var(--transition-slow) ease;
+}
+
+.progressFillActive {
+  background: linear-gradient(90deg, var(--color-primary), #5b8cff);
+}
+
+.progressFillClosed {
+  background: linear-gradient(90deg, #c7c7cc, #a8a8ad);
 }
 
 .progressText {
   font-size: 13px;
-  color: #666;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 /* WS 截止提醒 Toast */
@@ -92,14 +244,14 @@
   font-weight: 500;
   color: #fff;
   background: linear-gradient(135deg, #ff9500, #ff6b00);
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
   margin-bottom: 12px;
   cursor: pointer;
   text-align: center;
-  animation: toastSlideIn 0.3s ease;
+  animation: slideIn 300ms ease;
 }
 
-@keyframes toastSlideIn {
+@keyframes slideIn {
   from { transform: translateY(-10px); opacity: 0; }
   to { transform: translateY(0); opacity: 1; }
 }
@@ -108,9 +260,9 @@
 .privacyBanner {
   padding: 10px 14px;
   font-size: 13px;
-  color: #3370FF;
-  background: #e8f0ff;
-  border-radius: 8px;
+  color: var(--color-primary);
+  background: var(--color-primary-light);
+  border-radius: var(--radius-md);
   margin-bottom: 16px;
   line-height: 1.5;
 }
@@ -127,26 +279,36 @@
   font-size: 16px;
   font-weight: 600;
   color: #fff;
-  background: #3370FF;
+  background: var(--color-primary);
   border: none;
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
   cursor: pointer;
-  transition: background 0.2s;
+  min-height: 44px;
+  transition:
+    background var(--transition-fast),
+    transform var(--transition-fast),
+    box-shadow var(--transition-fast);
 }
 
 .submitVoteBtn:hover:not(.submitVoteDisabled) {
-  background: #245bdb;
+  background: var(--color-primary-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(51, 112, 255, 0.3);
+}
+
+.submitVoteBtn:active:not(.submitVoteDisabled) {
+  transform: translateY(0);
 }
 
 .submitVoteDisabled {
-  background: #b4c8f0;
+  background: var(--color-primary-disabled);
   cursor: not-allowed;
 }
 
 .submitError {
   text-align: center;
   font-size: 13px;
-  color: #ff3b30;
+  color: var(--color-danger);
   margin-top: 10px;
 }
 
@@ -158,47 +320,78 @@
   margin-top: 16px;
   padding: 12px;
   font-size: 14px;
-  color: #34c759;
-  background: #f0fff4;
-  border-radius: 8px;
+  color: var(--color-success);
+  background: var(--color-success-light);
+  border-radius: var(--radius-md);
 }
 
-/* 发起者操作 */
+/* 发起者操作区 (U-09) */
 .creatorActions {
   margin-top: 24px;
   padding-top: 20px;
-  border-top: 1px solid #f0f0f0;
+  border-top: 1px solid var(--color-border-light);
   display: flex;
+  gap: 12px;
   justify-content: center;
+  flex-wrap: wrap;
 }
 
 .closeBtn {
-  padding: 12px 32px;
+  padding: 12px 24px;
   font-size: 14px;
   font-weight: 500;
-  color: #ff3b30;
-  background: #fff;
-  border: 1.5px solid #ff3b30;
-  border-radius: 10px;
+  color: var(--color-warning);
+  background: var(--color-warning-light);
+  border: 1.5px solid var(--color-warning);
+  border-radius: var(--radius-lg);
   cursor: pointer;
-  transition: all 0.2s;
+  min-height: 44px;
+  transition:
+    all var(--transition-fast),
+    transform var(--transition-fast);
 }
 
-.closeBtn:hover {
-  background: #fff0ef;
+.closeBtn:hover:not(:disabled) {
+  background: #fff0cc;
+  transform: translateY(-1px);
+}
+
+.closeBtn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.deleteBtn {
+  padding: 12px 24px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-danger);
+  background: var(--color-danger-light);
+  border: 1.5px solid var(--color-danger);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  min-height: 44px;
+  transition:
+    all var(--transition-fast),
+    transform var(--transition-fast);
+}
+
+.deleteBtn:hover {
+  background: #ffe0dd;
+  transform: translateY(-1px);
 }
 
 /* 已结束页脚 */
 .closedFooter {
   text-align: center;
   font-size: 13px;
-  color: #999;
+  color: var(--color-text-tertiary);
   margin-top: 24px;
   padding-top: 20px;
-  border-top: 1px solid #f0f0f0;
+  border-top: 1px solid var(--color-border-light);
 }
 
-/* 确认弹窗遮罩 */
+/* 结束确认弹窗 */
 .overlay {
   position: fixed;
   inset: 0;
@@ -208,16 +401,22 @@
   justify-content: center;
   z-index: 100;
   padding: 24px;
+  animation: overlayFadeIn var(--transition-fast) ease;
+}
+
+@keyframes overlayFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 .dialog {
-  background: #fff;
+  background: var(--color-bg-card);
   border-radius: 14px;
   padding: 24px;
   max-width: 320px;
   width: 100%;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
-  animation: dialogIn 0.2s ease;
+  box-shadow: var(--shadow-dialog);
+  animation: dialogIn 250ms ease;
 }
 
 @keyframes dialogIn {
@@ -227,7 +426,7 @@
 
 .dialogText {
   font-size: 15px;
-  color: #1d1d1f;
+  color: var(--color-text);
   line-height: 1.5;
   margin: 0 0 20px;
   text-align: center;
@@ -242,11 +441,12 @@
   flex: 1;
   padding: 10px;
   font-size: 14px;
-  color: #666;
-  background: #f2f3f5;
+  color: var(--color-text-secondary);
+  background: var(--color-bg-tag);
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   cursor: pointer;
+  min-height: 44px;
 }
 
 .dialogConfirm {
@@ -255,12 +455,38 @@
   font-size: 14px;
   font-weight: 500;
   color: #fff;
-  background: #ff3b30;
+  background: var(--color-warning);
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   cursor: pointer;
+  min-height: 44px;
+  transition: background var(--transition-fast);
 }
 
 .dialogConfirm:hover {
-  background: #d9362e;
+  background: #e08600;
+}
+
+/* 删除成功 Toast */
+.deleteToast {
+  position: fixed;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 12px 24px;
+  background: var(--color-bg-card);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-dialog);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-text);
+  z-index: 200;
+  animation: toastSlideIn 250ms ease both;
+  max-width: 90vw;
+  white-space: nowrap;
+}
+
+@keyframes toastSlideIn {
+  from { transform: translateX(-50%) translateY(-20px); opacity: 0; }
+  to { transform: translateX(-50%) translateY(0); opacity: 1; }
 }

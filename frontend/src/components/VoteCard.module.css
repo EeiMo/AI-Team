@@ -1,23 +1,54 @@
-/* VoteCard.module.css — 投票卡片样式 */
+/* VoteCard.module.css — 投票卡片样式（U-04 美工优化） */
 
 .card {
-  background: #ffffff;
-  border-radius: 12px;
+  background: var(--color-bg-card);
+  border-radius: var(--radius-xl);
   padding: 16px;
   margin-bottom: 12px;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+  box-shadow: var(--shadow-sm);
   cursor: pointer;
-  transition: box-shadow 0.2s, transform 0.2s;
+  transition:
+    box-shadow var(--transition-base),
+    transform var(--transition-base),
+    opacity var(--transition-slow);
   outline: none;
+  animation: fadeIn var(--transition-slow) ease both;
+  border: 1px solid transparent;
 }
 
 .card:hover {
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
-  transform: translateY(-1px);
+  box-shadow: var(--shadow-lg);
+  transform: translateY(-2px);
+  border-color: rgba(51, 112, 255, 0.08);
 }
 
 .card:focus-visible {
-  box-shadow: 0 0 0 2px #3370FF;
+  box-shadow: 0 0 0 2px var(--color-primary);
+}
+
+.cardActive {
+  border-left: 3px solid var(--color-success);
+}
+
+.cardClosed {
+  border-left: 3px solid var(--color-text-tertiary);
+}
+
+/* 删除中淡出 → 折叠 */
+.deleted {
+  opacity: 0;
+  transform: translateX(20px);
+  max-height: 0;
+  padding: 0 16px;
+  margin-bottom: 0;
+  overflow: hidden;
+  transition:
+    opacity 300ms ease,
+    transform 300ms ease,
+    max-height 400ms ease 200ms,
+    padding 300ms ease 200ms,
+    margin-bottom 300ms ease 200ms;
+  pointer-events: none;
 }
 
 .header {
@@ -30,12 +61,12 @@
 .dot {
   width: 8px;
   height: 8px;
-  border-radius: 50%;
+  border-radius: var(--radius-full);
   flex-shrink: 0;
 }
 
 .dotActive {
-  background: #34c759;
+  background: var(--color-success);
   animation: pulse 2s infinite;
 }
 
@@ -44,15 +75,15 @@
 }
 
 @keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.4; }
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(52, 199, 89, 0.4); }
+  50% { opacity: 0.4; box-shadow: 0 0 0 4px rgba(52, 199, 89, 0); }
 }
 
 .title {
   font-size: 16px;
   font-weight: 500;
   line-height: 1.4;
-  color: #1d1d1f;
+  color: var(--color-text);
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -71,25 +102,34 @@
   display: inline-block;
   padding: 2px 8px;
   font-size: 12px;
-  color: #666;
-  background: #f2f3f5;
+  color: var(--color-text-secondary);
+  background: var(--color-bg-tag);
   border-radius: 4px;
 }
 
 .tagTime {
-  color: #3370FF;
-  background: #e8f0ff;
+  color: var(--color-primary);
+  background: var(--color-primary-light);
 }
 
-.progressRow {
+/* 底部操作区 */
+.footer {
   display: flex;
   align-items: center;
   gap: 10px;
 }
 
+.progressRow {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
 .progressText {
   font-size: 12px;
-  color: #999;
+  color: var(--color-text-tertiary);
   white-space: nowrap;
   flex-shrink: 0;
 }
@@ -97,14 +137,54 @@
 .progressBar {
   flex: 1;
   height: 6px;
-  background: #e5e6eb;
+  background: var(--color-bg-tag);
   border-radius: 3px;
   overflow: hidden;
 }
 
 .progressFill {
   height: 100%;
-  background: linear-gradient(90deg, #3370FF, #5b8cff);
   border-radius: 3px;
-  transition: width 0.5s ease;
+  transition: width var(--transition-slow) ease;
+}
+
+.progressFillActive {
+  background: linear-gradient(90deg, var(--color-primary), #5b8cff);
+}
+
+.progressFillClosed {
+  background: linear-gradient(90deg, #c7c7cc, #a8a8ad);
+}
+
+/* 删除按钮 */
+.deleteBtn {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  background: none;
+  border: 1.5px solid var(--color-border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition:
+    border-color var(--transition-fast),
+    background var(--transition-fast),
+    transform var(--transition-fast);
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  line-height: 1;
+}
+
+.deleteBtn:hover {
+  border-color: var(--color-danger);
+  background: var(--color-danger-light);
+  transform: scale(1.1);
+}
+
+.deleteBtn:active {
+  transform: scale(0.95);
 }

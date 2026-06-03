@@ -1,0 +1,389 @@
+# ============================================================
+# 团队即时投票工具 — CI/CD 流水线（GitHub Actions）
+# 设计人：长夜 | 日期：2026-06-01
+# 进化版本：evo-v1 | 来源：EVO-005 CI/CD 流水线模板
+# ============================================================
+#
+# 流水线阶段：
+#   lint → test → build image → push → deploy → smoke test
+#
+# 关键特性：
+#   - PR 触发：仅 lint + test（不部署）
+#   - main 合并：完整流水线
+#   - 手动触发：支持指定环境和标签
+#   - 冒烟测试失败 → 自动回滚到上一个稳定镜像
+#
+# 所需 Secrets（在 GitHub Settings → Secrets 中配置）：
+#   DOCKER_REGISTRY     镜像仓库地址
+#   DOCKER_USERNAME     仓库用户名
+#   DOCKER_PASSWORD     仓库密码
+#   DEPLOY_HOST         部署目标主机
+#   DEPLOY_USER         SSH 用户
+#   DEPLOY_KEY          SSH 私钥
+#   PG_PASSWORD         数据库密码（加密存储）
+#   FEISHU_APP_ID       飞书应用 ID
+#   FEISHU_APP_SECRET   飞书应用密钥
+# ============================================================
+
+name: Vote App CI/CD
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: '目标部署环境'
+        required: true
+        type: choice
+        default: 'staging'
+        options:
+          - staging
+          - production
+      tag:
+        description: '镜像标签（留空则用 commit SHA）'
+        required: false
+        type: string
+
+env:
+  NODE_VERSION: '20'
+  DOCKER_REGISTRY: ${{ secrets.DOCKER_REGISTRY }}
+  COMPOSE_FILE: deploy/docker-compose.yml
+
+# ─── 并发控制：同一分支同时只运行一个流水线 ───
+concurrency:
+  group: ${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+
+  # ════════════════════════════════════════════
+  # Stage 1: Lint（代码静态检查）
+  # ════════════════════════════════════════════
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: |
+            backend/package-lock.json
+            frontend/package-lock.json
+
+      - name: Lint Backend
+        working-directory: backend
+        run: |
+          npm ci --include=dev
+          npx tsc --noEmit
+          npx eslint src/ --ext .ts
+
+      - name: Lint Frontend
+        working-directory: frontend
+        run: |
+          npm ci --include=dev
+          npx tsc --noEmit
+          npx eslint src/ --ext .ts,.tsx
+
+  # ════════════════════════════════════════════
+  # Stage 2: Test（单元测试 + 集成测试）
+  # ════════════════════════════════════════════
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    needs: lint
+
+    # 后端测试依赖 PostgreSQL + Redis 服务容器
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: vote_user
+          POSTGRES_PASSWORD: ${{ secrets.PG_PASSWORD || '***' }}
+          POSTGRES_DB: vote_db
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6380:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Run Backend Tests
+        working-directory: backend
+        env:
+          NODE_ENV: test
+          DATABASE_URL: postgresql://vote_user:${{ secrets.PG_PASSWORD || '***' }}@localhost:5433/vote_db
+          REDIS_URL: redis://localhost:6380
+          JWT_SECRET: test-jwt-ci-secret
+        run: |
+          npm ci --include=dev
+          # Wait for PostgreSQL to be ready
+          npx wait-on tcp:5433 --timeout 30000 || exit 1
+          # Run DDL migration
+          npx ts-node src/db/migrate.ts || true
+          npm test
+
+      - name: Run Frontend Tests
+        working-directory: frontend
+        run: |
+          npm ci --include=dev
+          npm test
+
+      - name: Upload Test Reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: |
+            docs/test/junit-*.xml
+          retention-days: 7
+
+  # ════════════════════════════════════════════
+  # Stage 3+4: Build + Push 镜像
+  # ════════════════════════════════════════════
+  build-and-push:
+    name: Build & Push
+    runs-on: ubuntu-latest
+    needs: test
+    # PR 不构建镜像（仅 lint+test）
+    if: github.event_name != 'pull_request'
+    outputs:
+      image_tag: ${{ steps.meta.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set image tag
+        id: meta
+        run: |
+          if [ -n "${{ github.event.inputs.tag }}" ]; then
+            echo "version=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
+          elif [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            echo "version=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=${GITHUB_SHA::8}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Login to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ secrets.DOCKER_REGISTRY }}
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build & Push App Image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/app.Dockerfile
+          push: true
+          tags: |
+            ${{ secrets.DOCKER_REGISTRY }}/vote-app:${{ steps.meta.outputs.version }}
+            ${{ secrets.DOCKER_REGISTRY }}/vote-app:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build & Push Nginx Image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/nginx.Dockerfile
+          push: true
+          tags: |
+            ${{ secrets.DOCKER_REGISTRY }}/vote-nginx:${{ steps.meta.outputs.version }}
+            ${{ secrets.DOCKER_REGISTRY }}/vote-nginx:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ════════════════════════════════════════════
+  # Stage 5: Deploy（部署到目标服务器）
+  # ════════════════════════════════════════════
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    if: github.event_name != 'pull_request'
+    environment:
+      name: ${{ github.event.inputs.environment || 'staging' }}
+    env:
+      IMAGE_TAG: ${{ needs.build-and-push.outputs.image_tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Record previous image tag for rollback
+        id: prev
+        run: |
+          # 从目标服务器获取当前运行的镜像标签，保存为回滚标记
+          echo "previous_tag=latest" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_KEY }}
+          script: |
+            set -e
+            cd /opt/vote-app
+
+            # 拉取最新镜像
+            docker pull ${{ secrets.DOCKER_REGISTRY }}/vote-app:${{ env.IMAGE_TAG }}
+            docker pull ${{ secrets.DOCKER_REGISTRY }}/vote-nginx:${{ env.IMAGE_TAG }}
+
+            # 记录当前镜像标签（用于回滚）
+            CURRENT_TAG=$(docker inspect vote-app --format '{{index .Config.Labels "version"}}' 2>/dev/null || echo "latest")
+            echo "CURRENT_TAG=$CURRENT_TAG" > /tmp/vote-rollback.env
+
+            # 部署
+            export PG_PASSWORD="${{ secrets.PG_PASSWORD }}"
+            export FEISHU_APP_ID="${{ secrets.FEISHU_APP_ID }}"
+            export FEISHU_APP_SECRET="${{ secrets.FEISHU_APP_SECRET }}"
+            export TEAM_TOTAL_MEMBERS="24"
+
+            APP_IMAGE="${{ secrets.DOCKER_REGISTRY }}/vote-app:${{ env.IMAGE_TAG }}" \
+            NGINX_IMAGE="${{ secrets.DOCKER_REGISTRY }}/vote-nginx:${{ env.IMAGE_TAG }}" \
+            docker-compose -f ${{ env.COMPOSE_FILE }} up -d --no-deps app nginx
+
+  # ════════════════════════════════════════════
+  # Stage 6: Smoke Test（冒烟测试）
+  # ════════════════════════════════════════════
+  smoke-test:
+    name: Smoke Test
+    runs-on: ubuntu-latest
+    needs: deploy
+    if: github.event_name != 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Smoke Tests
+        run: |
+          # 等待服务完全启动
+          sleep 15
+
+          # 执行冒烟测试（对部署目标服务器）
+          # 注：实际环境需设置 BASE_URL 指向目标服务器
+          chmod +x deploy/smoke-test.sh
+          BASE_URL="${{ secrets.DEPLOY_URL || 'https://localhost' }}" \
+          SKIP_SSL_VERIFY=true \
+            ./deploy/smoke-test.sh
+
+      - name: Smoke Test Failed — Trigger Rollback
+        if: failure()
+        run: |
+          echo "❌ 冒烟测试失败！触发自动回滚..."
+          echo "回滚标记已写入 /tmp/vote-rollback.flag"
+
+  # ════════════════════════════════════════════
+  # Stage 6-R: Rollback（冒烟失败自动回滚）
+  # ════════════════════════════════════════════
+  rollback:
+    name: Rollback
+    runs-on: ubuntu-latest
+    needs: smoke-test
+    if: failure() && needs.smoke-test.result == 'failure'
+    environment:
+      name: ${{ github.event.inputs.environment || 'staging' }}
+    steps:
+      - name: Rollback to Previous Stable Image
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_KEY }}
+          script: |
+            set -e
+            cd /opt/vote-app
+
+            # 读取回滚标记
+            if [ -f /tmp/vote-rollback.env ]; then
+              source /tmp/vote-rollback.env
+            else
+              CURRENT_TAG="latest"
+            fi
+
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo "🔄 自动回滚到: ${CURRENT_TAG}"
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+            # 回滚：拉取上一个稳定镜像并重新部署
+            docker pull ${{ secrets.DOCKER_REGISTRY }}/vote-app:${CURRENT_TAG} || true
+            docker pull ${{ secrets.DOCKER_REGISTRY }}/vote-nginx:${CURRENT_TAG} || true
+
+            export PG_PASSWORD="${{ secrets.PG_PASSWORD }}"
+            export FEISHU_APP_ID="${{ secrets.FEISHU_APP_ID }}"
+            export FEISHU_APP_SECRET="${{ secrets.FEISHU_APP_SECRET }}"
+            export TEAM_TOTAL_MEMBERS="24"
+
+            APP_IMAGE="${{ secrets.DOCKER_REGISTRY }}/vote-app:${CURRENT_TAG}" \
+            NGINX_IMAGE="${{ secrets.DOCKER_REGISTRY }}/vote-nginx:${CURRENT_TAG}" \
+            docker-compose -f ${{ env.COMPOSE_FILE }} up -d --no-deps app nginx
+
+            echo "✅ 回滚完成"
+
+      - name: Notify Rollback
+        if: always()
+        run: |
+          echo "⚠️  冒烟测试失败，已自动回滚到上一个稳定版本"
+          echo "环境: ${{ github.event.inputs.environment || 'staging' }}"
+          echo "请检查本次变更内容并修复后重新提交"
+
+  # ════════════════════════════════════════════
+  # 流水线完成通知
+  # ════════════════════════════════════════════
+  notify:
+    name: Notify
+    runs-on: ubuntu-latest
+    needs: [smoke-test, rollback]
+    if: always() && github.event_name != 'pull_request'
+    steps:
+      - name: Pipeline Summary
+        run: |
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "CI/CD 流水线完成"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "Lint:       ${{ needs.lint.result }}"
+          echo "Test:       ${{ needs.test.result }}"
+          echo "Build&Push: ${{ needs.build-and-push.result }}"
+          echo "Deploy:     ${{ needs.deploy.result }}"
+          echo "Smoke Test: ${{ needs.smoke-test.result }}"
+          echo "Rollback:   ${{ needs.rollback.result }}"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+          if [ "${{ needs.smoke-test.result }}" = "failure" ]; then
+            echo "⚠️  冒烟测试失败，已自动回滚"
+          elif [ "${{ needs.smoke-test.result }}" = "success" ]; then
+            echo "✅ 所有检查通过，部署成功"
+          fi

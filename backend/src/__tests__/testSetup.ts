@@ -16,6 +16,7 @@ import cors from 'cors';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { testKnex } = require('./shared/db');
+import jwt from 'jsonwebtoken';
 import { feishuAuth } from '../middleware/auth';
 import { createRateLimiter } from '../middleware/rateLimiter';
 import { errorHandler } from '../middleware/errorHandler';
@@ -26,6 +27,18 @@ import type { ClientToServerEvents, ServerToClientEvents } from '../types';
 
 // Re-export testKnex for test files
 export { testKnex };
+
+/** 测试用 JWT 密钥（jest.setup.ts 中已初始化，此处保持一致） */
+const TEST_JWT_SECRET = process.env.JWT_SECRET || 'test-jwt-secret-for-jest';
+
+/** 生成测试用 JWT token */
+export function signTestToken(userId: string, teamId: string, displayName: string): string {
+  return jwt.sign(
+    { user_id: userId, team_id: teamId, display_name: displayName },
+    TEST_JWT_SECRET,
+    { expiresIn: '1h' }
+  );
+}
 
 /** Clear all rate limiter keys (call beforeEach in rate-limited tests) */
 export async function clearRateLimitKeys(): Promise<void> {
@@ -77,7 +90,10 @@ async function ensureDDL(): Promise<void> {
         total_voters INTEGER NOT NULL DEFAULT 0,
         created_at TEXT NOT NULL,
         closed_at TEXT,
-        closed_by TEXT CHECK (closed_by IN ('manual', 'auto'))
+        closed_by TEXT CHECK (closed_by IN ('manual', 'auto')),
+        del_flag INTEGER NOT NULL DEFAULT 0,
+        deleted_at TEXT,
+        deleted_by TEXT
       )`,
       `CREATE INDEX IF NOT EXISTS idx_votes_team_status ON votes (team_id, status, created_at DESC)`,
       `CREATE INDEX IF NOT EXISTS idx_votes_active_deadline ON votes (deadline, status)`,
@@ -106,6 +122,7 @@ async function ensureDDL(): Promise<void> {
 }
 
 export async function cleanTestTables(): Promise<void> {
+  await testKnex('audit_logs').del().catch(() => {});
   await testKnex('user_votes').del().catch(() => {});
   await testKnex('options').del().catch(() => {});
   await testKnex('votes').del().catch(() => {});
@@ -117,6 +134,7 @@ export async function createTestVote(
     id: string; title: string; creator_id: string; creator_name: string;
     team_id: string; vote_type: string; vote_mode: string; status: string;
     deadlineMinutes: number; total_voters: number; options: string[];
+    del_flag?: boolean;
   }> = {}
 ): Promise<{ voteId: string; optionIds: string[] }> {
   const uuid = () => require('crypto').randomUUID();
@@ -136,6 +154,7 @@ export async function createTestVote(
     deadline: new Date(Date.now() + (overrides.deadlineMinutes ?? 60) * 60_000).toISOString(),
     total_voters: overrides.total_voters ?? 24,
     created_at: new Date().toISOString(),
+    del_flag: overrides.del_flag ? 1 : 0,
   });
 
   const opts = overrides.options || ['选项A', '选项B', '选项C'];
@@ -168,7 +187,7 @@ export function createTestApp(): TestApp {
   app.use(express.json());
 
   const auth = feishuAuth({ FEISHU_APP_ID: '', FEISHU_APP_SECRET: '' });
-  app.get('/health', (_req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }));
+  app.get('/api/health', (_req, res) => res.json({ status: 'ok', uptime: process.uptime(), checks: { postgres: 'ok', redis: 'ok' } }));
 
   const io = new SocketIOServer<ClientToServerEvents, ServerToClientEvents>(server, {
     path: '/ws', transports: ['websocket'], serveClient: false,
@@ -177,11 +196,13 @@ export function createTestApp(): TestApp {
 
   const voteService = new VoteService(_testRedis, io);
   const ballotService = new BallotService(_testRedis, io);
+  const { DeleteService } = require('../services/deleteService');
+  const deleteService = new DeleteService(_testRedis, io);
 
   const apiRouter = express.Router();
   apiRouter.use(auth);
   apiRouter.use('/votes', createRateLimiter(_testRedis));
-  apiRouter.use('/votes', createVoteRouter(voteService, ballotService));
+  apiRouter.use('/votes', createVoteRouter(voteService, ballotService, deleteService));
   app.use('/api', apiRouter);
   app.use('/api', errorHandler);
   return { app, server, io };
@@ -196,6 +217,8 @@ export async function setupTestEnv(): Promise<TestApp> {
     if (keys.length > 0) await _testRedis.del(keys);
     await _testRedis.del('health:degraded');
   } catch { console.warn('[testSetup] Redis 不可用'); }
+
+  // JWT_SECRET 由 jest.setup.ts 设置，此处不再覆盖
 
   await ensureDDL();
   await cleanTestTables();

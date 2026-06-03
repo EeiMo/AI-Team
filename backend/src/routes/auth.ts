@@ -23,8 +23,7 @@ const MAX_RETRIES = 3;
 /** 重试间隔基数（毫秒） */
 const RETRY_BASE_MS = 500;
 
-/** dev token 前缀 */
-const DEV_TOKEN_PREFIX = 'dev_';
+/* (dev token 前缀已移除 — 生产环境仅接受飞书 SSO 或 JWT token) */
 
 // ============================================================
 // 工具函数
@@ -446,50 +445,14 @@ export function createAuthRouter(redis: Redis): Router {
   });
 
   /**
-   * POST /api/auth/dev/login
-   *
-   * 开发环境快速登录（仅 NODE_ENV !== 'production' 时可用）
-   * 用于前端 dev 模式直连后端时，无需走完整 OAuth 流程
-   *
-   * 请求体：
-   * { user_id?: string, team_id?: string, display_name?: string }
-   *
-   * 响应：
-   * { code: 0, data: { token: "dev_<user_id>_<team_id>_<display_name>" } }
+   * POST /api/auth/dev/login — 已移除
+   * dev token 因安全漏洞（P0）被禁用，拒绝请求
    */
-  router.post('/dev/login', (req: Request, res: Response, next: NextFunction) => {
-    try {
-      if (config.NODE_ENV === 'production') {
-        throw new AppError(40302, '生产环境不支持开发登录', undefined);
-      }
-
-      const userId = (req.body?.user_id as string) || 'ou_dev_user_001';
-      const teamId = (req.body?.team_id as string) || 'dev_team_001';
-      const displayName = (req.body?.display_name as string) || '开发用户';
-
-      // 对特殊字符做安全编码
-      const safeUserId = encodeURIComponent(userId);
-      const safeTeamId = encodeURIComponent(teamId);
-      const safeName = encodeURIComponent(displayName);
-
-      const devToken = `${DEV_TOKEN_PREFIX}${safeUserId}_${safeTeamId}_${safeName}`;
-
-      console.info('[AuthRoute] dev 登录', { userId: userId.slice(0, 16) + '...' });
-
-      res.json({
-        code: 0,
-        data: {
-          token: devToken,
-          user: {
-            user_id: userId,
-            team_id: teamId,
-            display_name: displayName,
-          },
-        },
-      });
-    } catch (err) {
-      next(err);
-    }
+  router.post('/dev/login', (_req: Request, res: Response) => {
+    res.status(403).json({
+      code: 40302,
+      message: 'dev 登录已禁用，请使用飞书 SSO 或 JWT 登录',
+    });
   });
 
   /**

@@ -3,7 +3,7 @@
  * Axios 实例 + 拦截器：baseURL、Authorization 注入、401 处理、统一错误格式化
  */
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
-import type { ApiResponse } from '../types';
+import type { ApiResponse, CloseVoteResponse } from '../types';
 
 // ---- Axios 实例 ----
 const api = axios.create({
@@ -105,6 +105,11 @@ export async function feishuCallback(code: string, state: string): Promise<Feish
 export async function verifyToken(): Promise<{ user_id: string; display_name: string }> {
   const res = await api.get<ApiResponse<{ user_id: string; display_name: string }>>('/auth/verify');
   return res.data.data!;
+}
+
+/** 删除投票（仅创建者） */
+export async function deleteVote(voteId: string): Promise<void> {
+  await api.delete<ApiResponse<CloseVoteResponse>>(`/votes/${voteId}`);
 }
 
 export default api;

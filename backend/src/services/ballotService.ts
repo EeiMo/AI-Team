@@ -61,8 +61,8 @@ export class BallotService {
 
     try {
       // 2.1 锁定 vote 行 + 校验状态（BUG-012 修复：增加 deadline 字段和校验）
-      const vote: Pick<VoteRow, 'id' | 'status' | 'vote_type' | 'deadline' | 'vote_mode'> | undefined = await trx('votes')
-        .select('id', 'status', 'vote_type', 'deadline', 'vote_mode')
+      const vote: Pick<VoteRow, 'id' | 'status' | 'vote_type' | 'deadline' | 'vote_mode' | 'del_flag'> | undefined = await trx('votes')
+        .select('id', 'status', 'vote_type', 'deadline', 'vote_mode', 'del_flag')
         .where({ id: voteId })
         .forUpdate()
         .first();
@@ -72,6 +72,10 @@ export class BallotService {
         throw new AppError(40400, '投票不存在');
       }
       // BUG-012 修复：同时检查状态和截止时间
+      if (vote.del_flag === true) {
+        await trx.rollback();
+        throw new AppError(40301, '投票已删除，无法提交');
+      }
       if (vote.status === 'closed' || new Date(vote.deadline) < new Date()) {
         await trx.rollback();
         throw new AppError(40301, '投票已结束，无法提交');

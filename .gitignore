@@ -35,3 +35,4 @@ deploy/certs/*.pem
 # Docker volumes
 pgdata/
 redisdata/
+vote-app/

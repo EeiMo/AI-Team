@@ -18,6 +18,7 @@ import {
   castTestVote,
   clearRateLimitKeys,
   cleanTestTables,
+  signTestToken,
   TestApp,
 } from './testSetup';
 
@@ -37,10 +38,13 @@ afterAll(async () => {
   await teardownTestEnv();
 }, 10000);
 
-// ---- 测试用 Token ----
-const TOKEN_ALICE = 'dev_oualice_testteam001_%E7%88%B1%E4%B8%BD%E4%B8%9D';
-const TOKEN_BOB = 'dev_oubob_testteam001_%E9%B2%8D%E5%8B%83';
-const TOKEN_OTHER = 'dev_ouother_otherteam_%E5%85%B6%E4%BB%96%E4%BA%BA'; // 跨团队
+// ---- 测试用 DB 引用 ----
+const { testKnex } = require('./shared/db');
+
+// ---- 测试用 JWT Token（替代已移除的 dev_ token） ----
+const TOKEN_ALICE = signTestToken('oualice', 'testteam001', '爱丽丝');
+const TOKEN_BOB = signTestToken('oubob', 'testteam001', '鲍勃');
+const TOKEN_OTHER = signTestToken('ouother', 'otherteam', '其他人'); // 跨团队
 
 describe('POST /api/votes — 创建投票', () => {
 
@@ -582,5 +586,185 @@ describe('POST /api/votes/:id/close — 结束投票', () => {
 
     expect(res.status).toBe(404);
     expect(res.body.code).toBe(40400);
+  });
+});
+
+describe('DELETE /api/votes/:id — 删除投票（软删除）', () => {
+
+  // AC-301-1: 创建者删除进行中的投票
+  it('AC-301-1: 创建者删除 active 投票 → 200', async () => {
+    const { voteId } = await createTestVote({
+      creator_id: 'oualice',
+      team_id: 'testteam001',
+    });
+
+    const res = await request(app)
+      .delete(`/api/votes/${voteId}`)
+      .set('Authorization', `Bearer ${TOKEN_ALICE}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.code).toBe(0);
+    expect(res.body.message).toBe('投票已删除');
+
+    // 验证 del_flag 已更新
+    const updated = await testKnex('votes').select('del_flag').where({ id: voteId }).first();
+    expect(updated.del_flag).toBeTruthy();
+  });
+
+  // AC-301-2: 创建者删除已结束的投票
+  it('AC-301-2: 创建者删除 closed 投票 → 200', async () => {
+    const { voteId } = await createTestVote({
+      creator_id: 'oualice',
+      team_id: 'testteam001',
+      status: 'closed',
+    });
+
+    const res = await request(app)
+      .delete(`/api/votes/${voteId}`)
+      .set('Authorization', `Bearer ${TOKEN_ALICE}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.code).toBe(0);
+
+    const updated = await testKnex('votes').select('del_flag', 'deleted_by').where({ id: voteId }).first();
+    expect(updated.del_flag).toBeTruthy();
+    expect(updated.deleted_by).toBe('oualice');
+  });
+
+  // AC-301-7: 幂等 — 已删除投票再次删除
+  it('AC-301-7: 幂等 — 已删除投票再次删除 → code:0', async () => {
+    const { voteId } = await createTestVote({
+      creator_id: 'oualice',
+      team_id: 'testteam001',
+      del_flag: true,
+    });
+
+    const res = await request(app)
+      .delete(`/api/votes/${voteId}`)
+      .set('Authorization', `Bearer ${TOKEN_ALICE}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.code).toBe(0);
+  });
+
+  // AC-301-6: 非创建者不可删除 → 403
+  it('AC-301-6: 非创建者删除 → 403', async () => {
+    const { voteId } = await createTestVote({
+      creator_id: 'oualice',
+      team_id: 'testteam001',
+    });
+
+    const res = await request(app)
+      .delete(`/api/votes/${voteId}`)
+      .set('Authorization', `Bearer ${TOKEN_BOB}`);
+
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe(40303);
+  });
+
+  // AC-301-8: 跨团队删除 → 403（creator_id 检查先于 team_id）
+  it('AC-301-8: 跨团队删除 → 403', async () => {
+    const { voteId } = await createTestVote({
+      creator_id: 'oualice',
+      team_id: 'testteam001',
+    });
+
+    const res = await request(app)
+      .delete(`/api/votes/${voteId}`)
+      .set('Authorization', `Bearer ${TOKEN_OTHER}`);
+
+    expect(res.status).toBe(403);
+    // 注意：creator_id 检查优先于 team_id 检查
+    // TOKEN_OTHER(user=ouother) 不是创建者(oualice)，所以返回 40303
+    expect(res.body.code).toBe(40303);
+  });
+
+  // 不存在的投票 → 404
+  it('不存在的投票 → 404', async () => {
+    const res = await request(app)
+      .delete('/api/votes/00000000-0000-0000-0000-000000000000')
+      .set('Authorization', `Bearer ${TOKEN_ALICE}`);
+
+    expect(res.status).toBe(404);
+    expect(res.body.code).toBe(40401);
+  });
+
+  // AC-301-5: 列表页默认过滤 del_flag = FALSE
+  it('AC-301-5: 列表页默认不显示已删除投票', async () => {
+    const { voteId: voteId1 } = await createTestVote({
+      title: '正常投票',
+      creator_id: 'oualice',
+      team_id: 'testteam001',
+    });
+    const { voteId: voteId2 } = await createTestVote({
+      title: '将删除的投票',
+      creator_id: 'oualice',
+      team_id: 'testteam001',
+    });
+
+    // 删除第二个投票
+    await request(app)
+      .delete(`/api/votes/${voteId2}`)
+      .set('Authorization', `Bearer ${TOKEN_ALICE}`);
+
+    const res = await request(app)
+      .get('/api/votes?status=active')
+      .set('Authorization', `Bearer ${TOKEN_ALICE}`);
+
+    const ids = res.body.data.items.map((v: any) => v.id);
+    expect(ids).toContain(voteId1);
+    expect(ids).not.toContain(voteId2);
+  });
+
+  // 已删除投票详情页仍可访问，返回 deleted: true
+  it('已删除投票详情页可访问，返回 deleted: true', async () => {
+    const { voteId } = await createTestVote({
+      creator_id: 'oualice',
+      team_id: 'testteam001',
+      del_flag: true,
+    });
+
+    const res = await request(app)
+      .get(`/api/votes/${voteId}`)
+      .set('Authorization', `Bearer ${TOKEN_ALICE}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.deleted).toBe(true);
+  });
+
+  // 已删除投票不可投票
+  it('已删除投票不可投票 → 403', async () => {
+    const { voteId, optionIds } = await createTestVote({
+      creator_id: 'oualice',
+      team_id: 'testteam001',
+      del_flag: true,
+    });
+
+    const res = await request(app)
+      .post(`/api/votes/${voteId}/vote`)
+      .set('Authorization', `Bearer ${TOKEN_BOB}`)
+      .send({ option_ids: [optionIds[0]] });
+
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe(40301);
+  });
+
+  // 审计日志：删除操作写入 audit_logs
+  it('审计日志记录 DELETE_VOTE', async () => {
+    const { voteId } = await createTestVote({
+      creator_id: 'oualice',
+      team_id: 'testteam001',
+    });
+
+    await request(app)
+      .delete(`/api/votes/${voteId}`)
+      .set('Authorization', `Bearer ${TOKEN_ALICE}`);
+
+    const logs = await testKnex('audit_logs')
+      .where({ entity_id: voteId, action: 'DELETE_VOTE' });
+
+    expect(logs.length).toBe(1);
+    expect(logs[0].user_id).toBe('oualice');
+    expect(logs[0].entity_type).toBe('vote');
   });
 });

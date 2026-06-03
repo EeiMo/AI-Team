@@ -1,12 +1,15 @@
 /**
  * components/ResultChart.tsx
- * ECharts 横向柱状图：票数/百分比、乐观更新、匿名/实名区分、响应式
+ * ECharts 横向柱状图：票数/百分比、乐观更新、匿名/实名区分、响应式（U-03 优化）
  *
- * 按需引入：仅 bar 模块（echarts/core + BarChart + 必要组件）
- * 乐观更新：optimisticCounts[option_id] 为本地偏移量，叠加到 count 上
- * 匿名区分：anonymous=true 时不渲染投票人信息
+ * v3 优化：
+ * - 卡片式结果容器（圆角 12px, 阴影, 内边距）
+ * - 动画 duration: 300ms, easing: cubicOut
+ * - 标题 + 更新时间戳
+ * - 渐变/圆角进度条
+ * - 本端已选项区分色
  */
-import { useRef, useEffect, useMemo } from 'react';
+import { useRef, useEffect, useMemo, useState } from 'react';
 import * as echarts from 'echarts/core';
 import { BarChart } from 'echarts/charts';
 import {
@@ -25,7 +28,11 @@ interface ResultChartProps {
   options: OptionType[];
   voteMode: VoteMode;
   status: VoteStatus;
-  optimisticCounts: Record<string, number>; // option_id → 偏移量
+  optimisticCounts: Record<string, number>;
+  /** 当前用户所选 option IDs（用于高亮本端已选项） */
+  mySelectedOptions?: string[];
+  /** 是否有新投票（用于脉冲高亮动效） */
+  highlightOptionId?: string | null;
 }
 
 export default function ResultChart({
@@ -33,9 +40,13 @@ export default function ResultChart({
   voteMode,
   status,
   optimisticCounts,
+  mySelectedOptions = [],
+  highlightOptionId,
 }: ResultChartProps) {
   const chartRef = useRef<HTMLDivElement>(null);
   const instanceRef = useRef<echarts.ECharts | null>(null);
+  // 用于显示「刚刚更新」时间戳
+  const [lastUpdate, setLastUpdate] = useState<string>('');
 
   const isAnonymous = voteMode === 'anonymous';
   const isClosed = status === 'closed';
@@ -47,10 +58,22 @@ export default function ResultChart({
       name: opt.content,
       value: (opt.count ?? 0) + (optimisticCounts[opt.id] ?? 0),
       voters: opt.voters ?? [],
+      id: opt.id,
     }));
   }, [options, optimisticCounts]);
 
   const totalVotes = chartData.reduce((sum, d) => sum + d.value, 0);
+
+  // 更新「刚刚更新」时间戳
+  useEffect(() => {
+    if (Object.keys(optimisticCounts).length > 0) {
+      setLastUpdate('刚刚更新');
+      const timer = setTimeout(() => {
+        setLastUpdate(new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }));
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [optimisticCounts, totalVotes]);
 
   // 初始化/更新图表
   useEffect(() => {
@@ -69,7 +92,7 @@ export default function ResultChart({
         text: title,
         left: 'center',
         top: 0,
-        textStyle: { fontSize: 14, fontWeight: 500, color: '#666' },
+        textStyle: { fontSize: 14, fontWeight: 600, color: '#1d1d1f' },
       },
       tooltip: {
         trigger: 'axis',
@@ -77,13 +100,15 @@ export default function ResultChart({
         formatter: (params: unknown) => {
           const p = (params as { name: string; value: number }[])[0];
           const percent = totalVotes > 0 ? ((p.value / totalVotes) * 100).toFixed(1) : '0';
-          // 实名 + 已结束 = 展示投票人
           const dataItem = chartData.find((d) => d.name === p.name);
           let votersInfo = '';
           if (!isAnonymous && dataItem && dataItem.voters.length > 0) {
             votersInfo = '<br/>投票人：' + dataItem.voters.map((v) => v.user_name).join('、');
           }
-          return `${p.name}<br/>票数：<b>${p.value}</b>（${percent}%）${votersInfo}`;
+          // 是否为本端已选项
+          const isMine = dataItem && mySelectedOptions.includes(dataItem.id);
+          const mineTag = isMine ? '<br/><span style="color:#3370FF">✓ 你已选此项</span>' : '';
+          return `${p.name}<br/>票数：<b>${p.value}</b>（${percent}%）${votersInfo}${mineTag}`;
         },
       },
       grid: {
@@ -116,12 +141,14 @@ export default function ResultChart({
         {
           name: '票数',
           type: 'bar',
+          animationDuration: 300,
+          animationEasing: 'cubicOut',
           data: chartData.map((d) => ({
             value: d.value,
             itemStyle: {
               color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
-                { offset: 0, color: '#3370FF' },
-                { offset: 1, color: '#5b8cff' },
+                { offset: 0, color: mySelectedOptions.includes(d.id) ? '#2b5fd9' : '#3370FF' },
+                { offset: 1, color: mySelectedOptions.includes(d.id) ? '#4a7ae8' : '#5b8cff' },
               ]),
               borderRadius: [0, 4, 4, 0],
             },
@@ -151,7 +178,7 @@ export default function ResultChart({
     return () => {
       window.removeEventListener('resize', handleResize);
     };
-  }, [chartData, title, totalVotes, isAnonymous, isClosed]);
+  }, [chartData, title, totalVotes, isAnonymous, isClosed, mySelectedOptions]);
 
   // 组件卸载时销毁实例
   useEffect(() => {
@@ -162,12 +189,18 @@ export default function ResultChart({
   }, []);
 
   return (
-    <div className={styles.container}>
+    <div className={styles.resultCard}>
+      <div className={styles.resultHeader}>
+        <h3 className={styles.resultTitle}>{title}</h3>
+        <span className={styles.updateTime}>
+          {lastUpdate || new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
+        </span>
+      </div>
       <div ref={chartRef} className={styles.chart} />
       <p className={styles.summary}>
-        共 <strong>{totalVotes}</strong> 票
+        共 <strong className={styles.totalCount}>{totalVotes}</strong> 票
         {isAnonymous && !isClosed && (
-          <span className={styles.anonymousHint}>（匿名模式，不显示投票人身份）</span>
+          <span className={styles.anonymousHint}>(匿名模式)</span>
         )}
       </p>
     </div>

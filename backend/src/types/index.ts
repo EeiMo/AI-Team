@@ -20,6 +20,9 @@ export interface VoteRow {
   created_at: string;
   closed_at: string | null;
   closed_by: ClosedBy | null;
+  del_flag: boolean;
+  deleted_at: string | null;
+  deleted_by: string | null;
 }
 
 /** 选项表行 */
@@ -165,6 +168,28 @@ export interface WsVoteReminderPayload {
   remaining_seconds: number;
 }
 
+export interface WsVoteDeletedPayload {
+  vote_id: string;
+  deleted_by: string;
+  deleted_at: string;
+}
+
+// ---- 审计日志 ----
+
+/** 审计日志行 */
+export interface AuditLogRow {
+  id: string;
+  action: string;
+  entity_type: string;
+  entity_id: string;
+  user_id: string;
+  team_id: string;
+  ip: string | null;
+  user_agent: string | null;
+  detail: Record<string, unknown> | null;
+  created_at: string;
+}
+
 // ---- Express 扩展 ----
 
 declare global {
@@ -196,6 +221,7 @@ export interface ServerToClientEvents {
   ['vote:{id}:update']: (payload: WsVoteUpdatePayload) => void;
   ['vote:{id}:closed']: (payload: WsVoteClosedPayload) => void;
   ['vote:{id}:reminder']: (payload: WsVoteReminderPayload) => void;
+  ['vote:{id}:deleted']: (payload: WsVoteDeletedPayload) => void;
 }
 
 // Client-to-server events

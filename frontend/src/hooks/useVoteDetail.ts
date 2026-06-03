@@ -1,6 +1,10 @@
 /**
  * hooks/useVoteDetail.ts
- * 投票详情数据 Hook：初始加载、WS 增量更新、乐观更新与回滚
+ * 投票详情数据 Hook：初始加载、WS 增量更新、乐观更新与回滚、删除状态
+ *
+ * v3 新增:
+ * - deleted 状态：监听 vote:{id}:deleted 事件
+ * - 删除时自动将 vote.deleted = true，驱动已删除占位页
  *
  * 乐观更新流程：
  * 1. 用户提交投票 → 本地 options[].count + 1（仅选中项）
@@ -10,7 +14,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import api, { ApiError } from '../services/api';
 import { useSocket } from './useSocket';
-import type { ApiResponse, VoteDetailData, Vote, Option, WsVoteUpdate, WsVoteClosed, WsReminder, CloseVoteResponse } from '../types';
+import type { ApiResponse, VoteDetailData, Vote, Option, WsVoteUpdate, WsVoteClosed, WsVoteDeleted, WsReminder, CloseVoteResponse } from '../types';
 
 export interface SubmitVoteResult {
   ok: boolean;
@@ -24,13 +28,15 @@ interface UseVoteDetailReturn {
   mySelectedOptions: string[];
   loading: boolean;
   error: string | null;
-  optimisticCounts: Record<string, number>; // option_id → ±偏移量
+  optimisticCounts: Record<string, number>;
   reminderToast: boolean;
   dismissReminder: () => void;
   submitVote: (optionIds: string[]) => Promise<SubmitVoteResult>;
   closeVote: () => Promise<boolean>;
   refetch: () => Promise<void>;
   closingVote: boolean;
+  /** 投票是否已被创建者删除 */
+  deleted: boolean;
 }
 
 export function useVoteDetail(voteId: string): UseVoteDetailReturn {
@@ -43,6 +49,7 @@ export function useVoteDetail(voteId: string): UseVoteDetailReturn {
   const [optimisticCounts, setOptimisticCounts] = useState<Record<string, number>>({});
   const [closingVote, setClosingVote] = useState(false);
   const [reminderToast, setReminderToast] = useState(false);
+  const [deleted, setDeleted] = useState(false);
 
   // 用 ref 追踪当前是否已投票，避免闭包旧值
   const hasVotedRef = useRef(false);
@@ -55,6 +62,10 @@ export function useVoteDetail(voteId: string): UseVoteDetailReturn {
     try {
       const res = await api.get<ApiResponse<VoteDetailData>>(`/votes/${voteId}`);
       const data = res.data.data!;
+      // 检查是否已被删除
+      if (data.vote.deleted) {
+        setDeleted(true);
+      }
       setVote(data.vote);
       setOptions(data.vote.options ?? []);
       setHasVoted(data.has_voted);
@@ -64,6 +75,30 @@ export function useVoteDetail(voteId: string): UseVoteDetailReturn {
       // 重置乐观偏移
       setOptimisticCounts({});
     } catch (err: unknown) {
+      // 404 也可能表示投票已被删除（后端返回 code ≠ 0）
+      if (err instanceof ApiError && (err.code === 40401 || err.message.includes('不存在'))) {
+        setDeleted(true);
+        setError(null);
+        // 设置一个虚拟 vote 用于显示已删除占位页
+        setVote({
+          id: voteId,
+          title: '—',
+          creator_id: '',
+          creator_name: '',
+          team_id: '',
+          vote_type: 'single',
+          vote_mode: 'anonymous',
+          status: 'closed',
+          deadline: '',
+          total_voters: 0,
+          created_at: '',
+          closed_at: null,
+          closed_by: null,
+          deleted: true,
+        });
+        setLoading(false);
+        return;
+      }
       const msg = err instanceof Error ? err.message : '加载失败';
       setError(msg);
     } finally {
@@ -77,7 +112,6 @@ export function useVoteDetail(voteId: string): UseVoteDetailReturn {
 
   // ---- WS 事件处理 ----
   const handleUpdate = useCallback((payload: WsVoteUpdate) => {
-    // 增量更新指定 option 的 count
     setOptions((prev) =>
       prev.map((opt) =>
         opt.id === payload.option_id
@@ -85,7 +119,6 @@ export function useVoteDetail(voteId: string): UseVoteDetailReturn {
           : opt
       )
     );
-    // 服务端推送的 new_count 已是权威值，清除对应 option 的乐观偏移
     setOptimisticCounts((prev) => {
       if (!(payload.option_id in prev)) return prev;
       const next = { ...prev };
@@ -95,9 +128,17 @@ export function useVoteDetail(voteId: string): UseVoteDetailReturn {
   }, []);
 
   const handleClosed = useCallback((_payload: WsVoteClosed) => {
-    // 全量重新拉取，确保与后端一致
     fetchDetail();
   }, [fetchDetail]);
+
+  const handleDeleted = useCallback((_payload: WsVoteDeleted) => {
+    // 投票被删除 → 标记 deleted 状态，驱动已删除占位页
+    setDeleted(true);
+    setVote((prev) =>
+      prev ? { ...prev, deleted: true } : null
+    );
+    setLoading(false);
+  }, []);
 
   const handleReminder = useCallback((_payload: WsReminder) => {
     setReminderToast(true);
@@ -112,13 +153,13 @@ export function useVoteDetail(voteId: string): UseVoteDetailReturn {
     voteId,
     onUpdate: handleUpdate,
     onClosed: handleClosed,
+    onDeleted: handleDeleted,
     onReminder: handleReminder,
     onReconnect: fetchDetail,
   });
 
   // ---- 提交投票（含乐观更新） ----
   const submitVote = useCallback(async (optionIds: string[]): Promise<SubmitVoteResult> => {
-    // 乐观更新：本地计数 +1
     const delta: Record<string, number> = {};
     optionIds.forEach((oid) => {
       delta[oid] = 1;
@@ -135,17 +176,14 @@ export function useVoteDetail(voteId: string): UseVoteDetailReturn {
       await api.post<ApiResponse>(`/votes/${voteId}/vote`, {
         option_ids: optionIds,
       });
-      // 成功 → 乐观数据保持，标记已投票
       setHasVoted(true);
       setMySelectedOptions(optionIds);
       hasVotedRef.current = true;
       return { ok: true };
     } catch (err: unknown) {
-      // 失败 → 回滚：重置乐观偏移 + 全量重新拉取
       setOptimisticCounts({});
       await fetchDetail();
 
-      // 分类错误原因
       if (err instanceof ApiError) {
         if (err.code === 40901) return { ok: false, reason: 'duplicate' };
         if (err.code === 40301) return { ok: false, reason: 'closed' };
@@ -161,7 +199,6 @@ export function useVoteDetail(voteId: string): UseVoteDetailReturn {
     setClosingVote(true);
     try {
       const res = await api.post<ApiResponse<CloseVoteResponse>>(`/votes/${voteId}/close`);
-      // 直接用服务端响应更新本地状态，避免重复 fetch（WS handleClosed 会广播给其他用户）
       const data = res.data.data!;
       setVote((prev) =>
         prev
@@ -190,5 +227,6 @@ export function useVoteDetail(voteId: string): UseVoteDetailReturn {
     closeVote,
     refetch: fetchDetail,
     closingVote,
+    deleted,
   };
 }

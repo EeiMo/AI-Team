@@ -36,6 +36,9 @@ export interface Vote {
   closed_at: string | null;
   closed_by: ClosedBy | null;
   options?: Option[];
+  deleted?: boolean;
+  deleted_at?: string | null;
+  deleted_by?: string | null;
 }
 
 // ---- 枚举类型 ----
@@ -114,6 +117,12 @@ export interface WsVoteUpdate {
 export interface WsVoteClosed {
   closed_by: ClosedBy;
   closed_at: string;
+}
+
+export interface WsVoteDeleted {
+  vote_id: string;
+  deleted_by: string;
+  deleted_at: string;
 }
 
 export interface WsReminder {

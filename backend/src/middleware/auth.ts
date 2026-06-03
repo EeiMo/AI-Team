@@ -2,21 +2,22 @@
  * src/middleware/auth.ts
  * 职责：飞书 SSO 认证中间件
  *      - 从 Authorization header 提取 Bearer token
- *      - Token 类型自动识别：dev token → JWT → 飞书 user_access_token
+ *      - Token 类型自动识别：JWT → 飞书 user_access_token
  *      - 注入 req.user = { user_id, team_id, display_name }
  *
  * Token 验证顺序：
- * 1. dev_ 前缀 → dev 降级模式（保留）
- * 2. 尝试 JWT 验证（若 JWT_SECRET 已配置）
- * 3. 调用飞书 /open-apis/authen/v1/user_info 验签（生产）
- * 4. 回退降级解析
+ * 1. 尝试 JWT 验证（若 JWT_SECRET 已配置）
+ * 2. 调用飞书 /open-apis/authen/v1/user_info 验签（生产）
+ * 3. 回退降级解析（仅开发/测试环境）
+ *
+ * 注意：JWT_SECRET 和飞书凭证在运行时从 process.env 读取，
+ * 确保测试中设置环境变量后能生效。config 模块仅在启动时求值，
+ * 运行时 set env 不会影响已缓存的 config 对象。
  */
 
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { config } from '../config';
-
-const DEV_TOKEN_PREFIX = 'dev_';
 
 /** JWT payload 结构 */
 interface JwtUserPayload {
@@ -30,31 +31,20 @@ interface JwtUserPayload {
 /**
  * 统一 Token 验证入口。
  *
- * 按优先级尝试：dev token → JWT → 飞书 API → 降级
+ * 按优先级尝试：JWT → 飞书 API → 降级
+ *
+ * 从 process.env 读取 JWT_SECRET / FEISHU 凭证，确保运行时设置的环境变量生效。
  */
 export async function verifyFeishuToken(token: string): Promise<{
   user_id: string;
   team_id: string;
   display_name: string;
 }> {
-  // --- 1. dev 令牌（dev_ 前缀，保留兼容）---
-  if (token.startsWith(DEV_TOKEN_PREFIX)) {
-    // dev token 仅限非生产环境使用（CVE-001 修复：防止生产环境 SSO 绕过）
-    if (config.NODE_ENV === 'production') {
-      throw new Error('开发 token 不可在生产环境使用');
-    }
-    const parts = token.slice(DEV_TOKEN_PREFIX.length).split('_');
-    return {
-      user_id: decodeURIComponent(parts[0] || 'ou_dev_user_001'),
-      team_id: decodeURIComponent(parts[1] || 'dev_team_001'),
-      display_name: decodeURIComponent(parts[2] || '开发用户'),
-    };
-  }
-
-  // --- 2. 尝试 JWT 验证 ---
-  if (config.JWT_SECRET) {
+  // --- 1. 尝试 JWT 验证 ---
+  const jwtSecret = config.JWT_SECRET || process.env.JWT_SECRET;
+  if (jwtSecret) {
     try {
-      const decoded = jwt.verify(token, config.JWT_SECRET) as JwtUserPayload;
+      const decoded = jwt.verify(token, jwtSecret) as JwtUserPayload;
       if (decoded.user_id) {
         return {
           user_id: decoded.user_id,
@@ -71,8 +61,10 @@ export async function verifyFeishuToken(token: string): Promise<{
     }
   }
 
-  // --- 3. 生产模式：调用飞书 Open API 验证 user_access_token ---
-  if (config.FEISHU_APP_ID && config.FEISHU_APP_SECRET) {
+  // --- 2. 生产模式：调用飞书 Open API 验证 user_access_token ---
+  const feishuAppId = config.FEISHU_APP_ID || process.env.FEISHU_APP_ID;
+  const feishuAppSecret = config.FEISHU_APP_SECRET || process.env.FEISHU_APP_SECRET;
+  if (feishuAppId && feishuAppSecret) {
     try {
       const res = await fetch(
         `https://open.feishu.cn/open-apis/authen/v1/user_info`,
@@ -94,8 +86,10 @@ export async function verifyFeishuToken(token: string): Promise<{
     }
   }
 
-  // --- 4. 降级：直接解析 token（仅开发/测试环境）---
-  if (config.NODE_ENV !== 'production') {
+  // --- 3. 降级：直接解析 token（仅开发/测试环境）---
+  // 优先使用运行时 process.env.NODE_ENV（config 缓存的可能在测试中不准确）
+  const nodeEnv = process.env.NODE_ENV || config.NODE_ENV || 'development';
+  if (nodeEnv !== 'production') {
     return {
       user_id: token.substring(0, 64),
       team_id: config.TEAM_TOTAL_MEMBERS > 0 ? 'env_team' : 'unknown',

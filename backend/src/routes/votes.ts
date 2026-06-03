@@ -11,11 +11,13 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { VoteService } from '../services/voteService';
 import { BallotService } from '../services/ballotService';
+import { DeleteService } from '../services/deleteService';
 import { config } from '../config';
 
 export function createVoteRouter(
   voteService: VoteService,
-  ballotService: BallotService
+  ballotService: BallotService,
+  deleteService?: DeleteService
 ): Router {
   const router = Router();
 
@@ -104,6 +106,32 @@ export function createVoteRouter(
       const { user_id, team_id } = req.user!;
       const result = await voteService.closeVote(req.params.id, user_id, team_id);
       res.json({ code: 0, data: result });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // ============================================================
+  // DELETE /api/votes/:id — 删除投票（软删除）
+  // ============================================================
+  router.delete('/:id', requireUser, async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      if (!deleteService) {
+        res.status(500).json({ code: 50000, message: '删除服务未初始化' });
+        return;
+      }
+      const { user_id, team_id } = req.user!;
+      const ip = req.ip || req.socket.remoteAddress || null;
+      const userAgent = req.headers['user-agent'] || null;
+
+      await deleteService.deleteVote(
+        req.params.id,
+        user_id,
+        team_id,
+        ip,
+        userAgent
+      );
+      res.json({ code: 0, message: '投票已删除' });
     } catch (err) {
       next(err);
     }

@@ -8,17 +8,80 @@
  * - 卡片列表 + 上拉加载更多
  * - 空状态插画
  */
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useFilterStore } from '../store';
 import { useVotes } from '../hooks/useVotes';
 import VoteCard from '../components/VoteCard';
+import DeleteConfirm from '../components/DeleteConfirm';
+import { deleteVote, ApiError } from '../services/api';
 import styles from './VoteList.module.css';
-import type { ListStatus } from '../types';
+import type { ListStatus, WsVoteDeleted } from '../types';
 
 export default function VoteList() {
   const navigate = useNavigate();
   const { status, setStatus } = useFilterStore();
-  const { votes, total, loading, error, hasMore, loadMore } = useVotes(status as ListStatus);
+  const { votes, total, loading, error, hasMore, loadMore, refresh } = useVotes(status as ListStatus);
+
+  // 当前用户 ID
+  const currentUserId = localStorage.getItem('feishu_user_id') ?? '';
+
+  // 删除状态
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; title: string } | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
+  const [deletedToast, setDeletedToast] = useState<string | null>(null);
+
+  // WS 监听 deleted 事件（使用 Ref 避免刷新时重复注册）
+  const wsRef = useRef<WebSocket | null>(null);
+
+  // ---- 删除处理 ----
+  const handleDeleteConfirm = useCallback(async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      await deleteVote(deleteTarget.id);
+      // 立即标记已删除（带淡出动画）
+      setDeletedIds((prev) => new Set(prev).add(deleteTarget.id));
+      setDeletedToast(`${deleteTarget.title} 已删除`);
+      setDeleteTarget(null);
+      // 延迟后完全移除
+      setTimeout(() => {
+        refresh();
+      }, 600);
+    } catch (err: unknown) {
+      const msg = err instanceof ApiError ? err.message : '删除失败，请稍后重试';
+      alert(msg);
+    } finally {
+      setDeleting(false);
+    }
+  }, [deleteTarget, refresh]);
+
+  const openDeleteConfirm = useCallback((voteId: string) => {
+    const vote = votes.find((v) => v.id === voteId);
+    if (vote) {
+      setDeleteTarget({ id: voteId, title: vote.title });
+    }
+  }, [votes]);
+
+  const dismissToast = useCallback(() => {
+    setDeletedToast(null);
+  }, []);
+
+  // 延迟清除 toast
+  useEffect(() => {
+    if (deletedToast) {
+      const timer = setTimeout(() => setDeletedToast(null), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [deletedToast]);
+
+  // 清理已移除的 deletedIds（重新拉取后重置）
+  useEffect(() => {
+    if (!loading && deletedIds.size > 0) {
+      setDeletedIds(new Set());
+    }
+  }, [votes]);
 
   const tabs: { key: ListStatus; label: string }[] = [
     { key: 'active', label: '进行中' },
@@ -86,8 +149,14 @@ export default function VoteList() {
         )}
 
         {/* 卡片列表 */}
-        {votes.map((vote) => (
-          <VoteCard key={vote.id} vote={vote} />
+        {votes.filter((v) => !deletedIds.has(v.id)).map((vote) => (
+          <VoteCard
+            key={vote.id}
+            vote={vote}
+            isCreator={vote.creator_id === currentUserId}
+            onDelete={openDeleteConfirm}
+            isDeleted={deletedIds.has(vote.id)}
+          />
         ))}
 
         {/* 加载更多 */}
@@ -107,6 +176,24 @@ export default function VoteList() {
           </p>
         )}
       </main>
+
+      {/* 删除确认弹窗 */}
+      {deleteTarget && (
+        <DeleteConfirm
+          title={deleteTarget.title}
+          onConfirm={handleDeleteConfirm}
+          onCancel={() => setDeleteTarget(null)}
+          loading={deleting}
+        />
+      )}
+
+      {/* 删除成功 Toast */}
+      {deletedToast && (
+        <div className={styles.toast} onClick={dismissToast}>
+          <span className={styles.toastIcon}>✅</span>
+          <span>{deletedToast}</span>
+        </div>
+      )}
     </div>
   );
 }

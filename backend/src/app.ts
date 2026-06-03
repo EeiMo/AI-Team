@@ -29,6 +29,7 @@ import { startRedisHealth } from './services/redisHealth';
 import { createVoteRouter } from './routes/votes';
 import { createAuthRouter } from './routes/auth';
 import { registerWsHandlers, wsAuthMiddleware } from './ws/handlers';
+import { DeleteService } from './services/deleteService';
 import type { ClientToServerEvents, ServerToClientEvents } from './types';
 
 async function main(): Promise<void> {
@@ -91,9 +92,38 @@ async function main(): Promise<void> {
     FEISHU_APP_SECRET: config.FEISHU_APP_SECRET,
   });
 
-  // 健康检查端点（无需认证）
-  app.get('/health', (_req, res) => {
-    res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  // 健康检查端点（无需认证）— 符合 ARCH_v3 §4.5 规范
+  app.get('/health', async (_req, res) => {
+    const uptime = process.uptime();
+    let pgOk = false;
+    let redisOk = false;
+
+    // PG 探活：SELECT 1
+    try {
+      const { knex } = await import('./db/knex');
+      await knex.raw('SELECT 1');
+      pgOk = true;
+    } catch {
+      pgOk = false;
+    }
+
+    // Redis 探活：PING
+    try {
+      await redis.ping();
+      redisOk = true;
+    } catch {
+      redisOk = false;
+    }
+
+    const allOk = pgOk && redisOk;
+    res.status(allOk ? 200 : 503).json({
+      status: allOk ? 'ok' : 'degraded',
+      uptime,
+      checks: {
+        postgres: pgOk ? 'ok' : 'error',
+        redis: redisOk ? 'ok' : 'error',
+      },
+    });
   });
 
   // ---- 路由 ----
@@ -129,13 +159,14 @@ async function main(): Promise<void> {
   // 初始化服务
   const voteService = new VoteService(redis, io);
   const ballotService = new BallotService(redis, io);
+  const deleteService = new DeleteService(redis, io);
 
   // 速率限制中间件（加在 auth 之后，路由之前）
   const rateLimiter = createRateLimiter(redis);
   apiRouter.use('/votes', rateLimiter);
 
   // 投票路由
-  const voteRouter = createVoteRouter(voteService, ballotService);
+  const voteRouter = createVoteRouter(voteService, ballotService, deleteService);
   apiRouter.use('/votes', voteRouter);
 
   // 挂载 API 路由

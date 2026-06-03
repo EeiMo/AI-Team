@@ -1,0 +1,205 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="jest tests" tests="56" failures="37" errors="0" time="22.162">
+  <testsuite name="POST /api/votes — 创建投票" errors="0" failures="32" skipped="0" timestamp="2026-06-03T01:52:06" time="11.496" tests="32">
+    <testcase classname="POST /api/votes — 创建投票" name="IT-CV-01: 正常创建单选实名投票" time="0.001">
+      <failure>Error: connect ECONNREFUSED 127.0.0.1:5433
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1705:16)</failure>
+    </testcase>
+    <testcase classname="POST /api/votes — 创建投票" name="IT-CV-02: 正常创建多选匿名投票" time="0">
+      <failure>Error: connect ECONNREFUSED 127.0.0.1:5433
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1705:16)</failure>
+    </testcase>
+    <testcase classname="POST /api/votes — 创建投票" name="IT-CV-03: 边界 — 最少 2 个选项" time="0">
+      <failure>Error: connect ECONNREFUSED 127.0.0.1:5433
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1705:16)</failure>
+    </testcase>
+    <testcase classname="POST /api/votes — 创建投票" name="IT-CV-04: 边界 — 最多 10 个选项" time="0">
+      <failure>Error: connect ECONNREFUSED 127.0.0.1:5433
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1705:16)</failure>
+    </testcase>
+    <testcase classname="POST /api/votes — 创建投票" name="IT-CV-05: 边界 — 标题 100 字符" time="0">
+      <failure>Error: connect ECONNREFUSED 127.0.0.1:5433
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1705:16)</failure>
+    </testcase>
+    <testcase classname="POST /api/votes — 创建投票" name="IT-CV-06: 边界 — 截止 1 分钟" time="0">
+      <failure>Error: connect ECONNREFUSED 127.0.0.1:5433
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1705:16)</failure>
+    </testcase>
+    <testcase classname="POST /api/votes — 创建投票" name="IT-CV-07: 异常 — title 为空" time="0">
+      <failure>Error: connect ECONNREFUSED 127.0.0.1:5433
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1705:16)</failure>
+    </testcase>
+    <testcase classname="POST /api/votes — 创建投票" name="IT-CV-08: 异常 — 选项重复" time="0">
+      <failure>Error: connect ECONNREFUSED 127.0.0.1:5433
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1705:16)</failure>
+    </testcase>
+    <testcase classname="POST /api/votes — 创建投票" name="IT-CV-09: 异常 — 选项有空字符串" time="0">
+      <failure>Error: connect ECONNREFUSED 127.0.0.1:5433
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1705:16)</failure>
+    </testcase>
+    <testcase classname="POST /api/votes — 创建投票" name="IT-CV-11: 异常 — 未认证" time="0">
+      <failure>Error: connect ECONNREFUSED 127.0.0.1:5433
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1705:16)</failure>
+    </testcase>
+    <testcase classname="POST /api/votes — 创建投票" name="IT-CV-12: 边界 — deadline_minutes=10080" time="0">
+      <failure>Error: connect ECONNREFUSED 127.0.0.1:5433
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1705:16)</failure>
+    </testcase>
+    <testcase classname="POST /api/votes — 创建投票" name="IT-CV-13: 异常 — deadline_minutes=10081" time="0">
+      <failure>Error: connect ECONNREFUSED 127.0.0.1:5433
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1705:16)</failure>
+    </testcase>
+    <testcase classname="GET /api/votes — 投票列表" name="IT-VL-01: 列表显示本团队进行中投票" time="0">
+      <failure>Error: connect ECONNREFUSED 127.0.0.1:5433
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1705:16)</failure>
+    </testcase>
+    <testcase classname="GET /api/votes — 投票列表" name="IT-VL-02: 无已结束投票时返回空列表" time="0">
+      <failure>Error: connect ECONNREFUSED 127.0.0.1:5433
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1705:16)</failure>
+    </testcase>
+    <testcase classname="GET /api/votes — 投票列表" name="IT-VL-03: 分页参数生效" time="0">
+      <failure>Error: connect ECONNREFUSED 127.0.0.1:5433
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1705:16)</failure>
+    </testcase>
+    <testcase classname="GET /api/votes — 投票列表" name="IT-VL-08: 跨团队不可见" time="0.001">
+      <failure>Error: connect ECONNREFUSED 127.0.0.1:5433
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1705:16)</failure>
+    </testcase>
+    <testcase classname="GET /api/votes/:id — 投票详情" name="IT-VD-01: 匿名模式 voters 数组为空" time="0">
+      <failure>Error: connect ECONNREFUSED 127.0.0.1:5433
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1705:16)</failure>
+    </testcase>
+    <testcase classname="GET /api/votes/:id — 投票详情" name="IT-VD-02: 实名模式返回 voters" time="0">
+      <failure>Error: connect ECONNREFUSED 127.0.0.1:5433
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1705:16)</failure>
+    </testcase>
+    <testcase classname="GET /api/votes/:id — 投票详情" name="IT-VD-03: 无人投票时 count=0" time="0">
+      <failure>Error: connect ECONNREFUSED 127.0.0.1:5433
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1705:16)</failure>
+    </testcase>
+    <testcase classname="GET /api/votes/:id — 投票详情" name="IT-VD-08: 已投票用户 has_voted=true" time="0">
+      <failure>Error: connect ECONNREFUSED 127.0.0.1:5433
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1705:16)</failure>
+    </testcase>
+    <testcase classname="GET /api/votes/:id — 投票详情" name="IT-VD-09: 未投票用户 has_voted=false" time="0">
+      <failure>Error: connect ECONNREFUSED 127.0.0.1:5433
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1705:16)</failure>
+    </testcase>
+    <testcase classname="GET /api/votes/:id — 投票详情" name="IT-VD-12: 不存在的投票 → 404" time="0">
+      <failure>Error: connect ECONNREFUSED 127.0.0.1:5433
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1705:16)</failure>
+    </testcase>
+    <testcase classname="POST /api/votes/:id/vote — 提交投票" name="IT-SV-01: 正常单选提交" time="0">
+      <failure>Error: connect ECONNREFUSED 127.0.0.1:5433
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1705:16)</failure>
+    </testcase>
+    <testcase classname="POST /api/votes/:id/vote — 提交投票" name="IT-SV-02: 正常多选提交多个选项" time="0">
+      <failure>Error: connect ECONNREFUSED 127.0.0.1:5433
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1705:16)</failure>
+    </testcase>
+    <testcase classname="POST /api/votes/:id/vote — 提交投票" name="IT-SV-05: option_ids 为空 → 400" time="0">
+      <failure>Error: connect ECONNREFUSED 127.0.0.1:5433
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1705:16)</failure>
+    </testcase>
+    <testcase classname="POST /api/votes/:id/vote — 提交投票" name="IT-SV-06: 重复投票 → 409" time="0">
+      <failure>Error: connect ECONNREFUSED 127.0.0.1:5433
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1705:16)</failure>
+    </testcase>
+    <testcase classname="POST /api/votes/:id/vote — 提交投票" name="IT-SV-07: 已结束投票 → 403" time="0">
+      <failure>Error: connect ECONNREFUSED 127.0.0.1:5433
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1705:16)</failure>
+    </testcase>
+    <testcase classname="POST /api/votes/:id/vote — 提交投票" name="IT-SV-08: option_id 不属于本投票 → 400" time="0">
+      <failure>Error: connect ECONNREFUSED 127.0.0.1:5433
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1705:16)</failure>
+    </testcase>
+    <testcase classname="POST /api/votes/:id/close — 结束投票" name="IT-CL-01: 发起者手动结束投票" time="0">
+      <failure>Error: connect ECONNREFUSED 127.0.0.1:5433
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1705:16)</failure>
+    </testcase>
+    <testcase classname="POST /api/votes/:id/close — 结束投票" name="IT-CL-02: 非发起者无法结束投票" time="0">
+      <failure>Error: connect ECONNREFUSED 127.0.0.1:5433
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1705:16)</failure>
+    </testcase>
+    <testcase classname="POST /api/votes/:id/close — 结束投票" name="IT-CL-04: 已结束投票 → 409" time="0">
+      <failure>Error: connect ECONNREFUSED 127.0.0.1:5433
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1705:16)</failure>
+    </testcase>
+    <testcase classname="POST /api/votes/:id/close — 结束投票" name="IT-CL-05: 不存在的投票 → 404" time="0">
+      <failure>Error: connect ECONNREFUSED 127.0.0.1:5433
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1705:16)</failure>
+    </testcase>
+    <testcase classname="" name="Test execution failure: could be caused by test hooks like &apos;afterAll&apos;." time="0">
+      <failure>{&quot;message&quot;:&quot;&quot;,&quot;stack&quot;:&quot;Error: thrown: \&quot;Exceeded timeout of 10000 ms for a hook.\nAdd a timeout value to this test to increase the timeout, if this is a long-running test. See https://jestjs.io/docs/api#testname-fn-timeout.\&quot;\n    at Object.&lt;anonymous&gt; (/home/eeimoo/vote-app/backend/src/__tests__/votes.test.ts:36:1)\n    at Runtime._execModule (/home/eeimoo/vote-app/backend/node_modules/jest-runtime/build/index.js:1439:24)\n    at Runtime._loadModule (/home/eeimoo/vote-app/backend/node_modules/jest-runtime/build/index.js:1022:12)\n    at Runtime.requireModule (/home/eeimoo/vote-app/backend/node_modules/jest-runtime/build/index.js:882:12)\n    at jestAdapter (/home/eeimoo/vote-app/backend/node_modules/jest-circus/build/legacy-code-todo-rewrite/jestAdapter.js:77:13)\n    at async runTestInternal (/home/eeimoo/vote-app/backend/node_modules/jest-runner/build/runTest.js:367:16)\n    at async runTest (/home/eeimoo/vote-app/backend/node_modules/jest-runner/build/runTest.js:444:34)&quot;}</failure>
+    </testcase>
+  </testsuite>
+  <testsuite name="Rate Limiter — 限流中间件" errors="0" failures="5" skipped="0" timestamp="2026-06-03T01:52:17" time="10.236" tests="5">
+    <testcase classname="Rate Limiter — 限流中间件" name="IT-RL-01: 第 1 次投票提交通过" time="0">
+      <failure>Error: connect ECONNREFUSED 127.0.0.1:5433
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1705:16)</failure>
+    </testcase>
+    <testcase classname="Rate Limiter — 限流中间件" name="IT-RL-02: 窗口内前 3 次通过（限流次数=3）" time="0">
+      <failure>Error: connect ECONNREFUSED 127.0.0.1:5433
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1705:16)</failure>
+    </testcase>
+    <testcase classname="Rate Limiter — 限流中间件" name="IT-RL-03: 连续 POST 同一投票超 3 次 → 429" time="0">
+      <failure>Error: connect ECONNREFUSED 127.0.0.1:5433
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1705:16)</failure>
+    </testcase>
+    <testcase classname="Rate Limiter — 限流中间件" name="IT-RL-04: 不同用户限流独立" time="0">
+      <failure>Error: connect ECONNREFUSED 127.0.0.1:5433
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1705:16)</failure>
+    </testcase>
+    <testcase classname="Rate Limiter — 限流中间件" name="IT-RL-06: GET 请求不受限流影响" time="0">
+      <failure>Error: connect ECONNREFUSED 127.0.0.1:5433
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1705:16)</failure>
+    </testcase>
+    <testcase classname="" name="Test execution failure: could be caused by test hooks like &apos;afterAll&apos;." time="0">
+      <failure>{&quot;message&quot;:&quot;&quot;,&quot;stack&quot;:&quot;Error: thrown: \&quot;Exceeded timeout of 10000 ms for a hook.\nAdd a timeout value to this test to increase the timeout, if this is a long-running test. See https://jestjs.io/docs/api#testname-fn-timeout.\&quot;\n    at Object.&lt;anonymous&gt; (/home/eeimoo/vote-app/backend/src/__tests__/rateLimiter.test.ts:31:1)\n    at Runtime._execModule (/home/eeimoo/vote-app/backend/node_modules/jest-runtime/build/index.js:1439:24)\n    at Runtime._loadModule (/home/eeimoo/vote-app/backend/node_modules/jest-runtime/build/index.js:1022:12)\n    at Runtime.requireModule (/home/eeimoo/vote-app/backend/node_modules/jest-runtime/build/index.js:882:12)\n    at jestAdapter (/home/eeimoo/vote-app/backend/node_modules/jest-circus/build/legacy-code-todo-rewrite/jestAdapter.js:77:13)\n    at async runTestInternal (/home/eeimoo/vote-app/backend/node_modules/jest-runner/build/runTest.js:367:16)\n    at async runTest (/home/eeimoo/vote-app/backend/node_modules/jest-runner/build/runTest.js:444:34)&quot;}</failure>
+    </testcase>
+  </testsuite>
+  <testsuite name="Auth middleware" errors="0" failures="0" skipped="0" timestamp="2026-06-03T01:52:27" time="0.224" tests="4">
+    <testcase classname="Auth middleware" name="returns 401 when no Authorization header" time="0.028">
+    </testcase>
+    <testcase classname="Auth middleware" name="returns 401 with empty Authorization header" time="0.01">
+    </testcase>
+    <testcase classname="Auth middleware" name="accepts dev token and passes through" time="0.012">
+    </testcase>
+    <testcase classname="Auth middleware" name="falls back to raw token parsing in non-production mode" time="0.011">
+    </testcase>
+  </testsuite>
+  <testsuite name="GET /health" errors="0" failures="0" skipped="0" timestamp="2026-06-03T01:52:27" time="0.08" tests="2">
+    <testcase classname="GET /health" name="returns 200 with status ok" time="0.01">
+    </testcase>
+    <testcase classname="GET /health" name="includes a timestamp" time="0.007">
+    </testcase>
+  </testsuite>
+  <testsuite name="config 模块" errors="0" failures="0" skipped="0" timestamp="2026-06-03T01:52:28" time="0.037" tests="13">
+    <testcase classname="config 模块" name="应有默认端口 3001" time="0.002">
+    </testcase>
+    <testcase classname="config 模块" name="应读取环境变量 PORT" time="0.001">
+    </testcase>
+    <testcase classname="config 模块" name="FEISHU_APP_ID 默认为空字符串" time="0.002">
+    </testcase>
+    <testcase classname="config 模块" name="应读取 FEISHU_APP_ID" time="0.001">
+    </testcase>
+    <testcase classname="config 模块" name="FEISHU_REDIRECT_URI 默认为空字符串" time="0.001">
+    </testcase>
+    <testcase classname="config 模块" name="应读取 FEISHU_REDIRECT_URI" time="0.002">
+    </testcase>
+    <testcase classname="config 模块" name="JWT_SECRET 未设置时生成随机密钥（开发/测试环境）" time="0.003">
+    </testcase>
+    <testcase classname="config 模块" name="JWT_EXPIRES_IN 默认为 24h" time="0.001">
+    </testcase>
+    <testcase classname="config 模块" name="OAUTH_STATE_TTL 默认为 600 秒" time="0.001">
+    </testcase>
+    <testcase classname="config 模块" name="应读取 REDIS_DEGRADE_THRESHOLD 默认值" time="0.002">
+    </testcase>
+    <testcase classname="config 模块" name="NODE_ENV 默认为 development" time="0.001">
+    </testcase>
+    <testcase classname="config 模块" name="FEISHU_AUTHORIZE_URL 默认值正确" time="0.001">
+    </testcase>
+    <testcase classname="config 模块" name="DATABASE_URL 未设置时返回空字符串（CVE 修复：已移除硬编码默认凭证）" time="0.001">
+    </testcase>
+  </testsuite>
+</testsuites>

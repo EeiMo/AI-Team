@@ -175,6 +175,9 @@ export class VoteService {
           created_at: now.toISOString(),
           closed_at: null,
           closed_by: null,
+          del_flag: false,
+          deleted_at: null,
+          deleted_by: null,
           options: optionRows,
         },
       };
@@ -193,6 +196,7 @@ export class VoteService {
 
   /**
    * 投票列表 — 分页 + 按 status 筛选
+   * 默认过滤 del_flag = FALSE（不显示已删投票）
    */
   async listVotes(
     teamId: string,
@@ -204,12 +208,12 @@ export class VoteService {
     const offset = (page - 1) * size;
 
     const [{ count }] = await knex('votes')
-      .where({ team_id: teamId, status })
+      .where({ team_id: teamId, status, del_flag: false })
       .count<{ count: string }[]>('* as count');
     const total = parseInt(count, 10);
 
     const rows: VoteRow[] = await knex('votes')
-      .where({ team_id: teamId, status })
+      .where({ team_id: teamId, status, del_flag: false })
       .orderBy('created_at', 'desc')
       .limit(size)
       .offset(offset);
@@ -248,11 +252,13 @@ export class VoteService {
 
   /**
    * 投票详情 — 含 tally（Redis 优先，PG 回退），字段级隐私过滤
+   * 已删除投票仍可访问（用于显示"已删"占位页）
+   * 返回新增字段：deleted / deleted_at / deleted_by
    */
   async getVoteDetail(
     voteId: string,
     userId: string
-  ): Promise<VoteDetailResponse> {
+  ): Promise<VoteDetailResponse & { deleted: boolean }> {
     // 查询投票主表
     const vote: VoteRow | undefined = await knex('votes').where({ id: voteId }).first();
     if (!vote) {
@@ -290,6 +296,7 @@ export class VoteService {
       vote: { ...vote, options: optionsWithTally },
       has_voted: hasVoted,
       my_selected_options: mySelectedOptions,
+      deleted: !!vote.del_flag,
     };
   }
 
@@ -308,7 +315,7 @@ export class VoteService {
 
     try {
       const row = await trx('votes')
-        .select('id', 'status', 'creator_id', 'team_id')
+        .select('id', 'status', 'creator_id', 'team_id', 'del_flag')
         .where({ id: voteId })
         .forUpdate()
         .first();
@@ -316,6 +323,10 @@ export class VoteService {
       if (!row) {
         await trx.rollback();
         throw new AppError(40400, '投票不存在');
+      }
+      if (row.del_flag === true) {
+        await trx.rollback();
+        throw new AppError(40400, '投票已被删除');
       }
       if (row.status === 'closed') {
         await trx.rollback();

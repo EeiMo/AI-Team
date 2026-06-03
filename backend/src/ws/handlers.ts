@@ -86,16 +86,7 @@ export async function wsAuthMiddleware(
       return next(new Error('缺少认证 token'));
     }
 
-    // 开发模式：dev_ 前缀 token
-    if (token.startsWith('dev_')) {
-      const parts = token.slice(4).split('_');
-      socket.data.user_id = parts[0] || 'ou_dev_user';
-      socket.data.team_id = parts[1] || 'dev_team';
-      socket.data.display_name = parts[2] || '开发用户';
-      return next();
-    }
-
-    // 生产模式：BUG-004 修复 — 调用 real verifyFeishuToken 进行验签
+    // 调用 verifyFeishuToken 进行验签
     const user = await verifyFeishuToken(token);
     socket.data.user_id = user.user_id;
     socket.data.team_id = user.team_id;

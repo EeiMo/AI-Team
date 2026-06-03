@@ -21,7 +21,7 @@ WORKDIR /client
 
 # 安装依赖
 COPY frontend/package.json frontend/package-lock.json* ./
-RUN npm ci --include=dev
+RUN npm install --include=dev
 
 # 复制源码并构建
 COPY frontend/ ./

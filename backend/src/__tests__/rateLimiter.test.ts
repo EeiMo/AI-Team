@@ -16,10 +16,9 @@ import {
   setupTestEnv,
   teardownTestEnv,
   createTestVote,
+  signTestToken,
   TestApp,
 } from './testSetup';
-
-// Mock knex
 
 let app: TestApp['app'];
 
@@ -32,8 +31,9 @@ afterAll(async () => {
   await teardownTestEnv();
 }, 10000);
 
-const TOKEN_A = 'dev_ouusera_testteam001_%E7%94%A8%E6%88%B7A';
-const TOKEN_B = 'dev_ouserb_testteam001_%E7%94%A8%E6%88%B7B';
+// 使用 JWT token 替代已移除的 dev_ token
+const TOKEN_A = signTestToken('ouuser_a', 'testteam001', '用户A');
+const TOKEN_B = signTestToken('ouuser_b', 'testteam001', '用户B');
 
 describe('Rate Limiter — 限流中间件', () => {
 
@@ -98,7 +98,7 @@ describe('Rate Limiter — 限流中间件', () => {
       creator_id: 'oualice',
     });
 
-    const TOKEN_TEST = 'dev_oulimittest_testteam001_%E9%99%90%E6%B5%81%E6%B5%8B%E8%AF%95';
+    const TOKEN_TEST = signTestToken('oulimittest', 'testteam001', '限流测试');
 
     // 第1次 POST → 实际投票成功（200）
     await request(app)
@@ -136,8 +136,8 @@ describe('Rate Limiter — 限流中间件', () => {
       creator_id: 'oualice',
     });
 
-    const TOKEN_X = 'dev_ouserx_testteam001_%E7%94%A8%E6%88%B7X';
-    const TOKEN_Y = 'dev_ousery_testteam001_%E7%94%A8%E6%88%B7Y';
+    const TOKEN_X = signTestToken('ouserx', 'testteam001', '用户X');
+    const TOKEN_Y = signTestToken('ousery', 'testteam001', '用户Y');
 
     // 两个用户各自第1次 → 都应通过
     const r1 = await request(app)

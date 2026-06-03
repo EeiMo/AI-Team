@@ -1,0 +1,162 @@
+# ============================================================
+# 团队即时投票工具 — Docker Compose 编排（STAGING 环境）
+# 格式：v2.4 | 设计人：长夜 | 日期：2026-06-01
+# 进化版本：evo-v1 | 来源：EVO-001 Staging 环境搭建模板
+# ============================================================
+# 
+# 与生产环境（docker-compose.yml）的差异：
+#   1. 端口映射不同（避免与生产端口冲突，可同机并行运行）
+#   2. 环境变量 STAGING=true（标识 staging 环境，应用内可据此切换行为）
+#   3. Volume 使用独立命名空间（pg_data_staging / redis_data_staging）
+#
+# PG 版本（15-alpine）、base image、Dockerfile 路径、构建流程与生产完全一致。
+#
+# 构建上下文：项目根目录（..），Dockerfile 路径相对于上下文
+# 从项目根目录执行：
+#   PG_PASSWORD=<pw> FEISHU_APP_ID=<id> FEISHU_APP_SECRET=<sec> \
+#   TEAM_TOTAL_MEMBERS=24 docker-compose -f deploy/docker-compose.staging.yml up -d
+#
+# 清理 staging 环境：
+#   docker-compose -f deploy/docker-compose.staging.yml down -v
+# ============================================================
+
+services:
+
+  # ========================================
+  # Nginx 反向代理 + 静态资源服务 (STAGING)
+  # ========================================
+  nginx:
+    build:
+      context: ..
+      dockerfile: deploy/nginx.Dockerfile
+      args:
+        - NODE_ENV=staging
+    pull_policy: build
+    image: vote-nginx:staging
+    container_name: vote-nginx-staging
+    ports:
+      - "8080:80"    # staging 使用 8080/8443，避免与生产 80/443 冲突
+      - "8443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./certs:/etc/nginx/certs:ro
+    depends_on:
+      - app
+    restart: unless-stopped
+    networks:
+      - vote-net-staging
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # ========================================
+  # Node.js 应用 (STAGING)
+  # ========================================
+  app:
+    build:
+      context: ..
+      dockerfile: deploy/app.Dockerfile
+    pull_policy: build
+    image: vote-app:staging
+    container_name: vote-app-staging
+    expose:
+      - "3001"
+    environment:
+      NODE_ENV: staging
+      STAGING: "true"                          # 应用内根据此变量切换 staging 行为
+      PORT: "3001"
+      DATABASE_URL: postgresql://vote_user:${PG_PASSWORD}@pg:5432/vote_db
+      REDIS_URL: redis://redis:6379/0
+      FEISHU_APP_ID: ${FEISHU_APP_ID}
+      FEISHU_APP_SECRET: ${FEISHU_APP_SECRET}
+      TEAM_TOTAL_MEMBERS: ${TEAM_TOTAL_MEMBERS}
+      REDIS_DEGRADE_THRESHOLD: "3"
+      JWT_SECRET: ${JWT_SECRET}
+    depends_on:
+      pg:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - vote-net-staging
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "curl",
+          "-f",
+          "http://localhost:3001/api/health"
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  # ========================================
+  # PostgreSQL 15 — 与生产版本一致 (STAGING)
+  # ========================================
+  pg:
+    image: postgres:15-alpine       # 与生产完全一致
+    container_name: vote-pg-staging
+    environment:
+      POSTGRES_DB: vote_db
+      POSTGRES_USER: vote_user
+      POSTGRES_PASSWORD: ${PG_PASSWORD}
+    volumes:
+      - pg_data_staging:/var/lib/postgresql/data    # 独立命名空间
+      - ../backend/migrations:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "127.0.0.1:5433:5432"       # staging 用 5433，避免与生产 5432 冲突
+    restart: unless-stopped
+    networks:
+      - vote-net-staging
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U vote_user -d vote_db"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ========================================
+  # Redis 7 — 与生产版本一致 (STAGING)
+  # ========================================
+  redis:
+    image: redis:7-alpine            # 与生产完全一致
+    container_name: vote-redis-staging
+    command: >
+      redis-server
+      --notify-keyspace-events Ex
+      --appendonly yes
+      --maxmemory 256mb
+      --maxmemory-policy volatile-lru
+    volumes:
+      - redis_data_staging:/data     # 独立命名空间
+    ports:
+      - "127.0.0.1:6380:6379"       # staging 用 6380，避免与生产 6379 冲突
+    restart: unless-stopped
+    networks:
+      - vote-net-staging
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+# ========================================
+# 命名卷 — 独立命名空间，隔离于生产数据
+# ========================================
+volumes:
+  pg_data_staging:
+  redis_data_staging:
+
+# ========================================
+# 桥接网络 — 独立网络，隔离于生产网络
+# ========================================
+networks:
+  vote-net-staging:
+    driver: bridge

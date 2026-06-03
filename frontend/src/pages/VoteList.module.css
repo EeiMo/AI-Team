@@ -1,4 +1,4 @@
-/* VoteList.module.css — 投票列表页样式 */
+/* VoteList.module.css — 投票列表页样式（v3 美工优化） */
 
 .page {
   max-width: 640px;
@@ -12,36 +12,48 @@
   align-items: center;
   justify-content: space-between;
   margin-bottom: 16px;
+  animation: fadeIn var(--transition-slow) ease both;
 }
 
 .heading {
-  font-size: 20px;
+  font-size: 22px;
   font-weight: 700;
-  color: #1d1d1f;
+  color: var(--color-text);
   margin: 0;
+  letter-spacing: -0.3px;
 }
 
 .createBtn {
-  padding: 8px 16px;
+  padding: 8px 18px;
   font-size: 14px;
-  font-weight: 500;
+  font-weight: 600;
   color: #fff;
-  background: #3370FF;
+  background: var(--color-primary);
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   cursor: pointer;
-  transition: background 0.2s;
+  min-height: 44px;
+  transition:
+    background var(--transition-fast),
+    transform var(--transition-fast),
+    box-shadow var(--transition-fast);
 }
 
 .createBtn:hover {
-  background: #245bdb;
+  background: var(--color-primary-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(51, 112, 255, 0.3);
+}
+
+.createBtn:active {
+  transform: translateY(0);
 }
 
 /* Tabs */
 .tabs {
   display: flex;
   gap: 0;
-  border-bottom: 2px solid #e5e6eb;
+  border-bottom: 2px solid var(--color-divider);
   margin-bottom: 16px;
 }
 
@@ -50,18 +62,21 @@
   padding: 10px 0;
   font-size: 15px;
   font-weight: 500;
-  color: #999;
+  color: var(--color-text-tertiary);
   background: none;
   border: none;
   border-bottom: 2px solid transparent;
   margin-bottom: -2px;
   cursor: pointer;
-  transition: color 0.2s, border-color 0.2s;
+  transition:
+    color var(--transition-fast),
+    border-color var(--transition-fast);
+  min-height: 44px;
 }
 
 .tabActive {
-  color: #3370FF;
-  border-bottom-color: #3370FF;
+  color: var(--color-primary);
+  border-bottom-color: var(--color-primary);
 }
 
 /* 列表 */
@@ -78,15 +93,16 @@
 }
 
 .skeletonCard {
-  background: #f7f8fa;
-  border-radius: 12px;
+  background: var(--color-bg-card);
+  border-radius: var(--radius-xl);
   padding: 20px 16px;
+  box-shadow: var(--shadow-sm);
 }
 
 .skeletonLine1 {
   width: 60%;
   height: 16px;
-  background: #e5e6eb;
+  background: var(--color-border);
   border-radius: 4px;
   margin-bottom: 10px;
   animation: shimmer 1.5s infinite;
@@ -95,7 +111,7 @@
 .skeletonLine2 {
   width: 40%;
   height: 12px;
-  background: #e5e6eb;
+  background: var(--color-border);
   border-radius: 4px;
   margin-bottom: 10px;
   animation: shimmer 1.5s infinite;
@@ -105,76 +121,87 @@
 .skeletonLine3 {
   width: 80%;
   height: 6px;
-  background: #e5e6eb;
+  background: var(--color-border);
   border-radius: 3px;
   animation: shimmer 1.5s infinite;
   animation-delay: 0.2s;
 }
 
-@keyframes shimmer {
-  0% { opacity: 0.5; }
-  50% { opacity: 1; }
-  100% { opacity: 0.5; }
-}
-
-/* 空状态 */
+/* 空状态 (U-06) */
 .empty {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 48px 24px;
+  padding: 64px 24px;
   text-align: center;
 }
 
 .emptyIcon {
-  font-size: 48px;
-  margin-bottom: 12px;
+  font-size: 56px;
+  margin-bottom: 16px;
+  opacity: 0.6;
 }
 
 .emptyText {
   font-size: 15px;
-  color: #999;
-  margin: 0 0 16px;
+  color: var(--color-text-tertiary);
+  margin: 0 0 20px;
+  line-height: 1.6;
 }
 
 .emptyCta {
-  padding: 10px 24px;
+  padding: 12px 28px;
   font-size: 14px;
+  font-weight: 600;
   color: #fff;
-  background: #3370FF;
+  background: var(--color-primary);
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   cursor: pointer;
+  min-height: 44px;
+  transition:
+    background var(--transition-fast),
+    transform var(--transition-fast);
 }
 
-/* 错误 */
+.emptyCta:hover {
+  background: var(--color-primary-hover);
+  transform: translateY(-1px);
+}
+
+/* 错误 (U-06) */
 .error {
   text-align: center;
-  padding: 32px 16px;
-  color: #ff3b30;
+  padding: 48px 16px;
+  color: var(--color-danger);
   font-size: 14px;
 }
 
 /* 加载更多 */
 .loadMore {
-  padding: 12px;
+  padding: 14px;
   margin: 12px 0;
   font-size: 14px;
-  color: #3370FF;
-  background: none;
-  border: 1px solid #e5e6eb;
-  border-radius: 8px;
+  color: var(--color-primary);
+  background: var(--color-bg-card);
+  border: 1.5px solid var(--color-border);
+  border-radius: var(--radius-lg);
   cursor: pointer;
+  min-height: 44px;
+  transition:
+    background var(--transition-fast),
+    border-color var(--transition-fast);
 }
 
 .loadMore:hover {
-  background: #f2f3f5;
+  background: var(--color-primary-light);
+  border-color: var(--color-primary);
 }
 
 .loadingMore {
   text-align: center;
   font-size: 13px;
-  color: #999;
+  color: var(--color-text-tertiary);
   padding: 12px;
   margin: 0;
 }
@@ -183,6 +210,38 @@
   text-align: center;
   font-size: 12px;
   color: #ccc;
-  padding: 16px;
+  padding: 20px;
   margin: 0;
+}
+
+/* Toast 通知 */
+.toast {
+  position: fixed;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 24px;
+  background: var(--color-bg-card);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-dialog);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-text);
+  z-index: 200;
+  animation: toastSlideIn 250ms ease both;
+  cursor: pointer;
+  max-width: 90vw;
+}
+
+.toastIcon {
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+@keyframes toastSlideIn {
+  from { transform: translateX(-50%) translateY(-20px); opacity: 0; }
+  to { transform: translateX(-50%) translateY(0); opacity: 1; }
 }

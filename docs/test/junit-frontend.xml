@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="37" failures="0" errors="0" time="1.001409038">
+    <testsuite name="src/__tests__/Login.test.tsx" timestamp="2026-06-03T01:25:01.055Z" hostname="eeimoo-System-Product-Name" tests="8" failures="0" errors="0" skipped="0" time="0.319985848">
+        <testcase classname="src/__tests__/Login.test.tsx" name="Login — 登录页 &gt; UT-LG-01: SSO 模式下显示飞书登录按钮" time="0.043697707">
+        </testcase>
+        <testcase classname="src/__tests__/Login.test.tsx" name="Login — 登录页 &gt; UT-LG-02: 显示标题「团队即时投票」" time="0.004255296">
+        </testcase>
+        <testcase classname="src/__tests__/Login.test.tsx" name="Login — 登录页 &gt; UT-LG-03: SSO 模式下显示「开发人员入口」折叠按钮" time="0.003422486">
+        </testcase>
+        <testcase classname="src/__tests__/Login.test.tsx" name="Login — 登录页 &gt; UT-LG-04: 点击「开发人员入口」展开手动登录表单" time="0.019753742">
+        </testcase>
+        <testcase classname="src/__tests__/Login.test.tsx" name="Login — 登录页 &gt; UT-LG-05: dev 登录时用户 ID 为空 → 显示错误" time="0.014314843">
+        </testcase>
+        <testcase classname="src/__tests__/Login.test.tsx" name="Login — 登录页 &gt; UT-LG-06: dev 登录时昵称为空 → 显示错误" time="0.130729785">
+        </testcase>
+        <testcase classname="src/__tests__/Login.test.tsx" name="Login — 登录页 &gt; UT-LG-07: dev 登录成功 → 存储 token + 跳转到 /votes" time="0.067628965">
+        </testcase>
+        <testcase classname="src/__tests__/Login.test.tsx" name="Login — 登录页 &gt; UT-LG-08: 用户 ID 允许 64 字符（input maxLength 截断）" time="0.032868105">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/__tests__/store.test.ts" timestamp="2026-06-03T01:25:01.057Z" hostname="eeimoo-System-Product-Name" tests="6" failures="0" errors="0" skipped="0" time="0.005199334">
+        <testcase classname="src/__tests__/store.test.ts" name="Store — 全局状态 &gt; UT-ST-01: 网络连接初始状态为已连接" time="0.001561551">
+        </testcase>
+        <testcase classname="src/__tests__/store.test.ts" name="Store — 全局状态 &gt; UT-ST-02: 设置连接状态为断开" time="0.000330147">
+        </testcase>
+        <testcase classname="src/__tests__/store.test.ts" name="Store — 全局状态 &gt; UT-ST-03: WS 断线时设置降级标志" time="0.000253979">
+        </testcase>
+        <testcase classname="src/__tests__/store.test.ts" name="Store — 全局状态 &gt; UT-ST-04: 恢复网络连接后降级标志重置" time="0.000251792">
+        </testcase>
+        <testcase classname="src/__tests__/store.test.ts" name="Store — 全局状态 &gt; UT-ST-05: 投票列表筛选默认为进行中" time="0.000240552">
+        </testcase>
+        <testcase classname="src/__tests__/store.test.ts" name="Store — 全局状态 &gt; UT-ST-06: 切换投票列表筛选为已结束" time="0.000186194">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/pages/AuthCallback.test.tsx" timestamp="2026-06-03T01:25:01.057Z" hostname="eeimoo-System-Product-Name" tests="8" failures="0" errors="0" skipped="0" time="0.173244627">
+        <testcase classname="src/pages/AuthCallback.test.tsx" name="AuthCallback &gt; 缺少 code 参数时显示错误" time="0.047457869">
+            <system-err>
+⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.
+⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath.
+
+            </system-err>
+        </testcase>
+        <testcase classname="src/pages/AuthCallback.test.tsx" name="AuthCallback &gt; 缺少 state 参数时显示错误" time="0.004144332">
+        </testcase>
+        <testcase classname="src/pages/AuthCallback.test.tsx" name="AuthCallback &gt; 无参数时显示错误" time="0.004278291">
+        </testcase>
+        <testcase classname="src/pages/AuthCallback.test.tsx" name="AuthCallback &gt; 有效 code+state 调用后端回调 API" time="0.007529639">
+        </testcase>
+        <testcase classname="src/pages/AuthCallback.test.tsx" name="AuthCallback &gt; 回调 API 失败时显示错误信息" time="0.007360783">
+        </testcase>
+        <testcase classname="src/pages/AuthCallback.test.tsx" name="AuthCallback &gt; 无 avatar_url 时不存储该字段" time="0.003950221">
+        </testcase>
+        <testcase classname="src/pages/AuthCallback.test.tsx" name="AuthCallback &gt; 显示返回登录按钮在错误页面上" time="0.0922531">
+        </testcase>
+        <testcase classname="src/pages/AuthCallback.test.tsx" name="AuthCallback &gt; 加载中显示 loading 文案" time="0.002920666">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/pages/Login.test.tsx" timestamp="2026-06-03T01:25:01.058Z" hostname="eeimoo-System-Product-Name" tests="15" failures="0" errors="0" skipped="0" time="0.502979229">
+        <testcase classname="src/pages/Login.test.tsx" name="Login — SSO 模式 (VITE_AUTH_MODE=sso) &gt; 渲染飞书登录按钮" time="0.122740642">
+            <system-err>
+⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.
+⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath.
+
+            </system-err>
+        </testcase>
+        <testcase classname="src/pages/Login.test.tsx" name="Login — SSO 模式 (VITE_AUTH_MODE=sso) &gt; 渲染标题和副标题" time="0.007131818">
+        </testcase>
+        <testcase classname="src/pages/Login.test.tsx" name="Login — SSO 模式 (VITE_AUTH_MODE=sso) &gt; 点击飞书登录按钮触发 SSO 跳转" time="0.036235927">
+        </testcase>
+        <testcase classname="src/pages/Login.test.tsx" name="Login — SSO 模式 (VITE_AUTH_MODE=sso) &gt; 默认隐藏 dev 手动登录区域" time="0.004899707">
+        </testcase>
+        <testcase classname="src/pages/Login.test.tsx" name="Login — SSO 模式 (VITE_AUTH_MODE=sso) &gt; 点击&quot;开发人员入口&quot;展开 dev 手动登录" time="0.030182147">
+        </testcase>
+        <testcase classname="src/pages/Login.test.tsx" name="Login — SSO 模式 (VITE_AUTH_MODE=sso) &gt; 展开 dev 后可通过手动登录进入投票" time="0.090212068">
+        </testcase>
+        <testcase classname="src/pages/Login.test.tsx" name="Login — SSO 模式 (VITE_AUTH_MODE=sso) &gt; 展开 dev 后 ID 为空显示错误" time="0.03055837">
+        </testcase>
+        <testcase classname="src/pages/Login.test.tsx" name="Login — SSO 模式 (VITE_AUTH_MODE=sso) &gt; 展开 dev 后昵称为空显示错误" time="0.058623073">
+        </testcase>
+        <testcase classname="src/pages/Login.test.tsx" name="Login — SSO 模式 (VITE_AUTH_MODE=sso) &gt; 点击&quot;收起&quot;隐藏 dev 登录区域" time="0.030298676">
+        </testcase>
+        <testcase classname="src/pages/Login.test.tsx" name="Login — dev 模式 (VITE_AUTH_MODE=dev) &gt; 默认显示手动登录表单" time="0.003702354">
+        </testcase>
+        <testcase classname="src/pages/Login.test.tsx" name="Login — dev 模式 (VITE_AUTH_MODE=dev) &gt; 不显示飞书登录按钮" time="0.005409038">
+        </testcase>
+        <testcase classname="src/pages/Login.test.tsx" name="Login — dev 模式 (VITE_AUTH_MODE=dev) &gt; 不显示&quot;开发人员入口&quot;切换按钮" time="0.005606098">
+        </testcase>
+        <testcase classname="src/pages/Login.test.tsx" name="Login — dev 模式 (VITE_AUTH_MODE=dev) &gt; 副标题显示&quot;输入身份信息开始使用&quot;" time="0.002837029">
+        </testcase>
+        <testcase classname="src/pages/Login.test.tsx" name="Login — dev 模式 (VITE_AUTH_MODE=dev) &gt; 手动提交 dev token 并跳转" time="0.04622885">
+        </testcase>
+        <testcase classname="src/pages/Login.test.tsx" name="Login — dev 模式 (VITE_AUTH_MODE=dev) &gt; 用户 ID 超过 64 字符显示错误" time="0.02556606">
+        </testcase>
+    </testsuite>
+</testsuites>

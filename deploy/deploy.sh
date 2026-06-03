@@ -230,6 +230,31 @@ deploy() {
         sleep 2
     done
 
+    # ── 检查数据库迁移是否成功（EVO-008）──
+    # 问题来源：迁移未执行无人感知，无失败告警
+    # 解决：app 启动后等待 10s，检查日志中的迁移标记
+    info "等待数据库迁移完成..."
+    sleep 10
+
+    # 先检查是否有迁移错误
+    MIGRATION_ERROR=$(docker-compose -f deploy/docker-compose.yml logs app --tail=300 2>/dev/null | grep -iE "Migration (failed|error|aborted)" || true)
+    if [ -n "$MIGRATION_ERROR" ]; then
+        error "检测到数据库迁移错误！"
+        error "${MIGRATION_ERROR}"
+        warn "回滚建议: docker-compose up -d --no-deps app (旧镜像)"
+        exit 1
+    fi
+
+    # 搜索迁移成功标记
+    MIGRATION_SUCCESS=$(docker-compose -f deploy/docker-compose.yml logs app --tail=300 2>/dev/null | grep -E "Migration completed|Tables ready" || true)
+    if [ -z "$MIGRATION_SUCCESS" ]; then
+        error "未检测到数据库迁移成功标记（'Migration completed' 或 'Tables ready'）"
+        error "可能原因：迁移脚本未执行 / 日志标记不匹配 / 镜像版本不正确"
+        error "请检查 app 容器日志: docker-compose -f deploy/docker-compose.yml logs app | tail -50"
+        exit 1
+    fi
+    info "数据库迁移状态确认通过 ✓"
+
     # Nginx reload（重载配置）
     info "重载 Nginx 配置..."
     docker-compose -f deploy/docker-compose.yml exec -T nginx nginx -s reload 2>/dev/null || \
